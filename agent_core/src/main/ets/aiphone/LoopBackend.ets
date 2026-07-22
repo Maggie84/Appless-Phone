@@ -1,7 +1,9 @@
 import { AgentEvent, AgentEventKind } from '../agent/AgentEvent';
 import { AgentTool } from '../agent/AgentTool';
+import { CliExecTool } from '../agent/CliExecTool';
 import { ConversationContext } from '../agent/ConversationContext';
 import { ReActAgentRunner } from '../agent/ReActAgentRunner';
+import { SkillReadTool } from '../skill/SkillReadTool';
 import { ToolRegistry } from '../agent/ToolRegistry';
 import { LlmProvider } from '../model/LlmProvider';
 import { LocalModel } from '../model/LocalModel';
@@ -210,7 +212,10 @@ export class LoopBackend {
         callbacks.onA2uiJsonl?.(line);
       }
     };
-    const runner = new ReActAgentRunner(model, this.buildToolRegistry(request, a2uiCallbacks), request.maxSteps > 0 ? request.maxSteps : 6);
+    const runner = new ReActAgentRunner(model, this.buildToolRegistry(request, a2uiCallbacks), request.maxSteps > 0 ? request.maxSteps : 6, undefined, request.skillSnapshot);
+    if (request.skillMatcher !== undefined && request.skillMatcher !== null) {
+      runner.setSkillMatcher(request.skillMatcher);
+    }
     const toolCalls: LoopToolTrace[] = [];
     let finalAnswer = '';
     let error = '';
@@ -312,6 +317,12 @@ export class LoopBackend {
       request,
       callbacks
     ));
+    if (request.cliRuntime !== undefined && request.cliRuntime !== null) {
+      registry.register(new CliExecTool(request.cliRuntime));
+    }
+    if (request.skillSnapshot !== undefined && request.skillSnapshot !== null && !request.skillSnapshot.isEmpty()) {
+      registry.register(new SkillReadTool(request.skillSnapshot));
+    }
     return registry;
   }
 

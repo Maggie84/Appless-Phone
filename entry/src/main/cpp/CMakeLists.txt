@@ -13,3 +13,6 @@ include_directories(${NATIVERENDER_ROOT_PATH}
 
 add_library(entry SHARED napi_init.cpp)
 target_link_libraries(entry PUBLIC libace_napi.z.so)
+
+add_library(cli_bridge SHARED cli_bridge.cpp)
+target_link_libraries(cli_bridge PUBLIC libace_napi.z.so)

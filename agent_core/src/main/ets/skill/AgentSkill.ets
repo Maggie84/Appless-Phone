@@ -5,6 +5,7 @@ export class AgentSkill {
   readonly metadata: string;
   readonly location: string;
   readonly body: string;
+  readonly rawFrontmatter: string;
 
   constructor(
     name: string,
@@ -12,7 +13,8 @@ export class AgentSkill {
     homepage: string,
     metadata: string,
     location: string,
-    body: string
+    body: string,
+    rawFrontmatter: string = ''
   ) {
     this.name = name;
     this.description = description;
@@ -20,6 +22,7 @@ export class AgentSkill {
     this.metadata = metadata;
     this.location = location;
     this.body = body;
+    this.rawFrontmatter = rawFrontmatter;
   }
 
   instructions(): string {

@@ -27,7 +27,8 @@ export function parseSkillMarkdown(text: string, location: string): AgentSkill {
     fields.get('homepage') ?? '',
     fields.get('metadata') ?? '',
     location,
-    body
+    body,
+    frontmatter
   );
 }
 

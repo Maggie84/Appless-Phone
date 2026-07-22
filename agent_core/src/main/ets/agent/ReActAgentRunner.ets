@@ -1,4 +1,6 @@
 import { AgentEvent, AgentEventKind } from './AgentEvent';
+import { SkillMatcher } from './SkillMatcher';
+import { SkillMatch } from '@loop/cli-runtime';
 import { summarizeA2uiObservation } from './A2uiObservationDigest';
 import { ConversationContext } from './ConversationContext';
 import { ToolRegistry } from './ToolRegistry';
@@ -43,6 +45,7 @@ export class ReActAgentRunner {
   private skillsInSystemPrompt: boolean;
   private maxSteps: number;
   private uiHandler: UiRenderHandler | null;
+  private skillMatcher: SkillMatcher | null;
 
   constructor(
     model: LocalModel,
@@ -58,10 +61,31 @@ export class ReActAgentRunner {
     this.skillsInSystemPrompt = skillsInSystemPrompt;
     this.maxSteps = maxSteps;
     this.uiHandler = uiHandler ?? null;
+    this.skillMatcher = null;
+  }
+
+  setSkillMatcher(matcher: SkillMatcher | null): void {
+    this.skillMatcher = matcher;
   }
 
   async run(task: string, listener: AgentListener, conversation?: ConversationContext): Promise<void> {
     const scratchpad: string[] = [];
+
+    if (this.skillMatcher !== null) {
+      const matches = this.skillMatcher.match(task);
+      if (matches.length > 0) {
+        const needsTieBreak = matches.length >= 2 &&
+          (matches[0].score - matches[1].score) < 0.1;
+        if (!needsTieBreak) {
+          const top = matches[0];
+          const callInput = this.buildCliExecInput(top);
+          const observation = await this.safeRunTool('cli_exec', callInput);
+          listener(new AgentEvent(AgentEventKind.OBSERVATION, observation));
+          listener(new AgentEvent(AgentEventKind.FINAL, observation));
+          return;
+        }
+      }
+    }
 
     for (let step = 0; step < this.maxSteps; step++) {
       let response: string;
@@ -296,5 +320,18 @@ export class ReActAgentRunner {
     const name = action.substring(0, open).trim();
     const input = action.substring(open + 1, close).trim();
     return new ToolCall(name, input);
+  }
+
+  private buildCliExecInput(match: SkillMatch): string {
+    return '{"skill":"' + match.skill.name + '","command":"' + match.command.name + '","params":{}}';
+  }
+
+  private async safeRunTool(name: string, input: string): Promise<string> {
+    try {
+      return await this.tools.run(name, input);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      return `tool error: ${message}`;
+    }
   }
 }

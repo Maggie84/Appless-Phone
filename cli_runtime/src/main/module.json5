@@ -1,0 +1,10 @@
+{
+  "module": {
+    "name": "cli_runtime",
+    "type": "har",
+    "deviceTypes": [
+      "phone",
+      "tablet"
+    ]
+  }
+}

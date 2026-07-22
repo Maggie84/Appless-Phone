@@ -1,4 +1,7 @@
 import { AgentEvent } from '../agent/AgentEvent';
+import { SkillMatcher } from '../agent/SkillMatcher';
+import { SkillSnapshot } from '../skill/SkillSnapshot';
+import { CliRuntime } from '@loop/cli-runtime';
 import { A2uiSurfaceState } from './runtime/A2uiTypes';
 
 export interface LoopModelSettings {
@@ -25,6 +28,9 @@ export interface LoopBackendRequest {
   persona?: Object;
   ignoreToolSurfaceUpdates?: boolean;
   maxSteps: number;
+  cliRuntime?: CliRuntime;
+  skillSnapshot?: SkillSnapshot;
+  skillMatcher?: SkillMatcher;
 }
 
 export interface LoopBackendCallbacks {

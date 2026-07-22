@@ -1,4 +1,6 @@
-import { AgentEvent, LoopBackend, LoopBackendRequest, LoopMessage, LoopToolTrace } from '@loop/agent-core';
+import { AgentEvent, LoopBackend, LoopBackendRequest, LoopMessage, LoopToolTrace, SkillMatcher, SkillSnapshot, createSkillSnapshot } from '@loop/agent-core';
+import { CliRuntime } from '@loop/cli-runtime';
+import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import {
   A2uiCallResult,
   A2uiEnvelope,
@@ -13,6 +15,7 @@ import { parseA2uiJsonl } from '@loop/agent-core';
 import { A2uiSurfaceStore } from '@loop/agent-core';
 import { LocalModelSettings } from '@loop/agent-core';
 import { aiLogError, aiLogInfo } from '@loop/agent-core';
+import { ensureInit, getExecFn, getError } from '../native/NativeCli.ets';
 import { attachPersonaDataToSurface } from './PersonaA2ui';
 import {
   memoryUpdateSurface,
@@ -28,6 +31,27 @@ export interface A2uiStreamMeta {
 
 export type A2uiSurfaceCallback = (surface: A2uiSurfaceState, raw: string, meta?: A2uiStreamMeta) => void;
 export type PersonaMemoryUpdateCallback = (update: PersonaMemoryUpdateRequest) => void;
+
+let _cliRuntime: CliRuntime | null = null;
+let _skillSnapshot: SkillSnapshot | null = null;
+let _skillMatcher: SkillMatcher | null = null;
+
+export function setCliRuntime(runtime: CliRuntime | null): void {
+  _cliRuntime = runtime;
+}
+
+export async function initSkillSystem(context: common.UIAbilityContext): Promise<void> {
+  if (_cliRuntime === null) {
+    return;
+  }
+  const snapshot = await createSkillSnapshot(context);
+  if (!snapshot.isEmpty()) {
+    const matcher = new SkillMatcher(_cliRuntime);
+    matcher.loadFromSnapshot(snapshot.eligible);
+    _skillSnapshot = snapshot;
+    _skillMatcher = matcher;
+  }
+}
 
 export function modelThinkCloseSeen(text: string): boolean {
   const lower = text.toLowerCase();
@@ -251,7 +275,10 @@ export async function callLocalModel(
     args: mergeToolArgs(preparedPersona.toolArgs, toolArgs),
     persona: preparedPersona.runtime as Object,
     ignoreToolSurfaceUpdates: settings.ignoreToolSurfaceUpdates,
-    maxSteps: 6
+    maxSteps: 6,
+    cliRuntime: _cliRuntime ?? undefined,
+    skillSnapshot: _skillSnapshot ?? undefined,
+    skillMatcher: _skillMatcher ?? undefined
   };
 
   try {

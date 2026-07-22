@@ -27,7 +27,9 @@ import {
   A2uiTravelOptionData
 } from '@loop/agent-core';
 import { stripeReceivingAccount } from '@loop/agent-core';
-import { A2uiStreamMeta, callLocalModel, modelThinkCloseSeen } from '../../model/LocalModelClient';
+import { A2uiStreamMeta, callLocalModel, initSkillSystem, modelThinkCloseSeen, setCliRuntime } from '../../model/LocalModelClient';
+import { CliRuntime } from '@loop/cli-runtime';
+import { ensureInit, getExecFn, getError } from '../../native/NativeCli.ets';
 import { GMAIL_MCP_AUTH_SETUP_URL, GMAIL_WEB_URL, GOOGLE_CALENDAR_WEB_URL, GOOGLE_OAUTH_SETUP_URL } from '@loop/agent-core';
 import { A2uiSurfaceStore, createSeedA2uiSurface } from '@loop/agent-core';
 import {
@@ -568,6 +570,19 @@ struct Index {
     this.loadPaymentAccounts();
     this.loadStripeReceivingProfile();
     void this.requestLocationPermissionOnLaunch();
+    this.initCliRuntime();
+  }
+
+  private initCliRuntime(): void {
+    ensureInit().then((): void => {
+      const execFn = getExecFn();
+      if (execFn === null) {
+        return;
+      }
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      setCliRuntime(new CliRuntime(ctx, execFn));
+      initSkillSystem(ctx).catch((_e: Object): void => {});
+    }).catch((_e: Object): void => {});
   }
 
   private personaPackStore(): PreferencesPersonaPackStore | null {

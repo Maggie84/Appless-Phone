@@ -2,6 +2,9 @@ export { ChatMessage, ConversationContext, ConversationRole } from './src/main/e
 export { clearStoredConversation, loadConversation, saveConversation } from './src/main/ets/agent/ConversationStore';
 export { AgentEvent, AgentEventKind } from './src/main/ets/agent/AgentEvent';
 export { AgentTool } from './src/main/ets/agent/AgentTool';
+export { CliExecTool } from './src/main/ets/agent/CliExecTool';
+export { SkillMatcher } from './src/main/ets/agent/SkillMatcher';
+export { adaptSkillToCli } from './src/main/ets/cli/SkillAdapter';
 export { A2uiObservationDigest, summarizeA2uiObservation } from './src/main/ets/agent/A2uiObservationDigest';
 export {
   ToolRegistry,

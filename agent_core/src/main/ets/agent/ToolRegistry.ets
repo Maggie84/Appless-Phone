@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { CliRuntime } from '@loop/cli-runtime';
 import { ComposioConfig } from '../composio/ComposioConfig';
 import { ComposioSessionClient } from '../composio/ComposioSessionClient';
 import { ComposioTool } from '../composio/ComposioTool';
@@ -9,6 +10,7 @@ import { ModelScopeTool } from '../modelscope/ModelScopeTool';
 import { SkillReadTool } from '../skill/SkillReadTool';
 import { SkillSnapshot } from '../skill/SkillSnapshot';
 import { AgentTool } from './AgentTool';
+import { CliExecTool } from './CliExecTool';
 import { UiTool } from './UiTool';
 
 export type ToolRegistryCloseHandler = () => Promise<void>;
@@ -91,11 +93,15 @@ export class ToolRegistry {
 
 export async function createConfiguredLoopToolRegistry(
   context: common.UIAbilityContext,
-  skillSnapshot?: SkillSnapshot | null
+  skillSnapshot?: SkillSnapshot | null,
+  cliRuntime?: CliRuntime | null
 ): Promise<ToolRegistry> {
   const registry = createLoopToolRegistry(skillSnapshot);
   if (skillSnapshot !== undefined && skillSnapshot !== null && !skillSnapshot.isEmpty()) {
     registry.register(new SandboxFileWriteTool(context));
+  }
+  if (cliRuntime !== undefined && cliRuntime !== null) {
+    registry.register(new CliExecTool(cliRuntime));
   }
   const client = new ComposioSessionClient(await ComposioConfig.fromContext(context));
   await client.initialize();

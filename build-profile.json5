@@ -42,6 +42,18 @@
   },
   "modules": [
     {
+      "name": "cli_runtime",
+      "srcPath": "./cli_runtime",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    },
+    {
       "name": "entry",
       "srcPath": "./entry",
       "targets": [
