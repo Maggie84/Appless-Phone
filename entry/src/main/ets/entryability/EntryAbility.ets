@@ -1,4 +1,4 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want, abilityAccessCtrl } from '@kit.AbilityKit';
+import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import util from '@ohos.util';
@@ -353,21 +353,9 @@ export default class EntryAbility extends UIAbility {
       });
   }
 
-  private async requestUserGrantPermissions(): Promise<void> {
-    try {
-      const atManager = abilityAccessCtrl.createAtManager();
-      await atManager.requestPermissionsFromUser(this.context, ['ohos.permission.ACCESS_BLUETOOTH']);
-      hilog.info(DOMAIN, 'testTag', 'requested ohos.permission.ACCESS_BLUETOOTH');
-    } catch (err) {
-      hilog.error(DOMAIN, 'testTag', 'requestUserGrantPermissions error: %{public}s', JSON.stringify(err));
-    }
-  }
-
   onWindowStageCreate(windowStage: window.WindowStage): void {
     // Main window is created, set main page for this ability
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
-
-    this.requestUserGrantPermissions();
 
     windowStage.loadContent('pages/A2uiHome/Index', (err) => {
       if (err.code) {

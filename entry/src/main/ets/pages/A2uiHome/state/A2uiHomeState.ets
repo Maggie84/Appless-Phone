@@ -71,8 +71,8 @@ export function shouldShowWelcome(isBusy: boolean, messageCount: number, surface
   return !isBusy && messageCount === 0 && isWelcomeSurface(surface);
 }
 
-export function inputTextAfterPromptSubmit(_current: string): string {
-  return '';
+export function inputTextAfterPromptSubmit(current: string): string {
+  return current;
 }
 
 export function voiceInputTextAfterRecognition(current: string, recognized: string): string {

@@ -29,13 +29,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "/Users/luoyige/.ohos/config/default_AIPhoneDemo_dlY6wKHLZdqwaFWlwxgsEVDDzY3RBlRpidOe7L6pX_M=.cer",
+          "certpath": "C:\\Users\\74431\\.ohos\\config\\default_harmony_Q-6hO4JCP-JRsFoWv3koQkE95IhmRo0sBt5D41KtGA4=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001BD1CC2C110B45CD78BE5C9E0B1A011E7090077DF9E9D8406DB1B951F420FF1C2C0F263878776BA1",
-          "profile": "/Users/luoyige/.ohos/config/default_AIPhoneDemo_dlY6wKHLZdqwaFWlwxgsEVDDzY3RBlRpidOe7L6pX_M=.p7b",
+          "keyPassword": "0000001B6C4E9840881AC36F1571FFF4199192979FB579F95CC31F51BCB35DE24532EB66D895004FBDCD73",
+          "profile": "C:\\Users\\74431\\.ohos\\config\\default_harmony_Q-6hO4JCP-JRsFoWv3koQkE95IhmRo0sBt5D41KtGA4=.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "/Users/luoyige/.ohos/config/default_AIPhoneDemo_dlY6wKHLZdqwaFWlwxgsEVDDzY3RBlRpidOe7L6pX_M=.p12",
-          "storePassword": "0000001BEA2EE200E7453EC62354E64B05785A654ECC7D76DD0F49D61D9A1E1D254ADE051869DB4494CE7E"
+          "storeFile": "C:\\Users\\74431\\.ohos\\config\\default_harmony_Q-6hO4JCP-JRsFoWv3koQkE95IhmRo0sBt5D41KtGA4=.p12",
+          "storePassword": "0000001BA8CA7D4BCF02D9C72EA9F5533CA84944676EB48E156DBEC9E41487FB9E81FE9225C6BF3D3233F8"
         }
       }
     ]

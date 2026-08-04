@@ -1,0 +1,9 @@
+{
+  "name": "@loop/cli-runtime",
+  "version": "1.0.0",
+  "description": "Loop CLI runtime: execute declared CLI skills on HarmonyOS NEXT",
+  "main": "Index.ets",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}
