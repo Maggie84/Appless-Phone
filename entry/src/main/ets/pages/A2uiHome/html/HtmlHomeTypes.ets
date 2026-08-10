@@ -1,7 +1,7 @@
 import { A2uiComponent } from '@loop/agent-core';
 
 export type HtmlHomeSource = 'welcome' | 'pending' | 'model' | 'tool';
-export type HtmlHomeKind = 'welcome' | 'thinking' | 'travel' | 'hotel' | 'food' | 'social' | 'dynamic-tools' | 'gmail' | 'media' | 'payment' | 'aggregate-search' | 'luckin' | 'generic';
+export type HtmlHomeKind = 'welcome' | 'thinking' | 'travel' | 'hotel' | 'food' | 'social' | 'dynamic-tools' | 'gmail' | 'media' | 'payment' | 'aggregate-search' | 'luckin' | 'mode' | 'generic';
 
 export interface HtmlHomeChip {
   label: string;

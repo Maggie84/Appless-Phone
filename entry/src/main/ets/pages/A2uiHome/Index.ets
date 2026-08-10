@@ -27,9 +27,14 @@ import {
   A2uiTravelOptionData
 } from '@loop/agent-core';
 import { stripeReceivingAccount } from '@loop/agent-core';
-import { A2uiStreamMeta, callLocalModel, initSkillSystem, modelThinkCloseSeen, setCliRuntime } from '../../model/LocalModelClient';
+import { A2uiStreamMeta, callLocalModel, initSkillSystem, modelThinkCloseSeen, setCliRuntime, setModeApi } from '../../model/LocalModelClient';
 import { CliRuntime } from '@loop/cli-runtime';
 import { ensureInit, getExecFn, getError } from '../../native/NativeCli.ets';
+import { ModeManager } from '../../modes/ModeManager';
+import { GeofenceApi } from '../../modes/triggers/GeofenceApi';
+import { ModeGeolocationStore } from '../../modes/triggers/ModeGeolocationStore';
+import { SmartHomeControlBehavior } from '../../modes/behaviors/SmartHomeControlBehavior';
+import { ModeKind } from '@loop/agent-core';
 import { GMAIL_MCP_AUTH_SETUP_URL, GMAIL_WEB_URL, GOOGLE_CALENDAR_WEB_URL, GOOGLE_OAUTH_SETUP_URL } from '@loop/agent-core';
 import { A2uiSurfaceStore, createSeedA2uiSurface } from '@loop/agent-core';
 import {
@@ -126,6 +131,17 @@ import {
   surfaceHasVisibleToolResult
 } from './render/A2uiHomeToolRequest';
 
+interface ModeMusicPlayArgs {
+  url: string;
+  title: string;
+}
+
+interface ModeSmartHomeToggleArgs {
+  device: string;
+  name: string;
+  next: boolean;
+}
+
 const CONNECTION_TEST_PROMPT: string = '连接检查：请返回 A2UI v0.9.1 setup surface，说明 Local API 已可用。';
 const TOOL_GATEWAY_URL: string = defaultToolGatewayUrl();
 const initialConnectionState: ConnectionPanelState = createInitialConnectionPanelState();
@@ -144,6 +160,11 @@ const READ_CALENDAR_PERMISSION: Permissions = 'ohos.permission.READ_CALENDAR';
 const WRITE_CALENDAR_PERMISSION: Permissions = 'ohos.permission.WRITE_CALENDAR';
 const APPROX_LOCATION_PERMISSION: Permissions = 'ohos.permission.APPROXIMATELY_LOCATION';
 const PRECISE_LOCATION_PERMISSION: Permissions = 'ohos.permission.LOCATION';
+
+interface ModeLatLng {
+  latitude: number;
+  longitude: number;
+}
 
 type RideActionArgValue = Object | string | number | boolean | null | undefined;
 
@@ -483,6 +504,13 @@ struct Index {
   @State luckinInlinePatchJson: string = '';
   @State luckinInlinePatchTick: number = 0;
   private luckinOptionSwitchInFlight: boolean = false;
+  private modeManager: ModeManager | null = null;
+  private modeGeolocationStore: ModeGeolocationStore | null = null;
+  private readonly MODE_GUIDE_NONE: number = 0;
+  private readonly MODE_GUIDE_ASK_HOME: number = 1;
+  private readonly MODE_GUIDE_ASK_WORK: number = 2;
+  private modeGuideStep: number = 0;
+  private modeGuideStarted: boolean = false;
 
   private isLuckinOptionSwitchArgs(args: Object | null): boolean {
     if (args === null) {
@@ -549,6 +577,10 @@ struct Index {
   }
 
   private htmlHomeHtmlForView(): string {
+    if (this.currentSurface.intent.indexOf('mode-') === 0) {
+      const document = this.currentHtmlHomeDocument();
+      return renderHtmlHomeDocument(document, false);
+    }
     if (this.currentSurface.intent === 'social') {
       return '';
     }
@@ -571,6 +603,20 @@ struct Index {
     this.loadStripeReceivingProfile();
     void this.requestLocationPermissionOnLaunch();
     this.initCliRuntime();
+    this.initModeSystem();
+  }
+
+  private initModeSystem(): void {
+    const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    const geofenceApi = new GeofenceApi();
+    this.modeGeolocationStore = new ModeGeolocationStore(ctx);
+    this.modeManager = new ModeManager(
+      (surface: A2uiSurfaceState) => this.forceApplySurface(surface, 'mode'),
+      geofenceApi
+    );
+    this.modeManager.init(ctx);
+    this.modeManager.registerDefaultModes();
+    setModeApi(this.modeManager);
   }
 
   private initCliRuntime(): void {
@@ -1159,6 +1205,14 @@ struct Index {
   }
 
   private currentHtmlHomeDocument(): HtmlHomeDocument {
+    if (this.currentSurface.intent.indexOf('mode-') === 0) {
+      return createHtmlHomeDocument({
+        surface: this.currentSurface,
+        messages: this.messages,
+        isBusy: this.isBusy,
+        isAwaitingFirstSurface: this.isAwaitingFirstSurface
+      });
+    }
     if (shouldShowWelcome(this.isBusy, this.messages.length, this.currentSurface) ||
       shouldShowQueryPendingSurface(this.isBusy, this.isAwaitingFirstSurface)) {
       return createHtmlHomeDocument({
@@ -1740,6 +1794,15 @@ struct Index {
     if (trimmed.length === 0 || this.isBusy) {
       return;
     }
+    if (await this.tryModeTestTrigger(trimmed, visibleText)) {
+      return;
+    }
+    if (await this.tryModeSetupGuideTrigger(trimmed, visibleText)) {
+      return;
+    }
+    if (await this.tryModeSetLocationTrigger(trimmed, visibleText)) {
+      return;
+    }
     const modelPrompt = modelPromptWithActionContext(trimmed, actionId, actionArgs);
     if (this.baseUrl.trim().length === 0) {
       aiLogError('[AIPhone][A2uiHomeSubmitBlocked] missingBaseUrl');
@@ -1856,6 +1919,178 @@ struct Index {
 
   private async sendPrompt(): Promise<void> {
     await this.submitPrompt(this.inputText, this.inputText);
+  }
+
+  private async tryModeTestTrigger(prompt: string, visibleText: string): Promise<boolean> {
+    if (this.modeManager === null) {
+      return false;
+    }
+    const lower = prompt.toLowerCase();
+    const isHome = lower.indexOf('测试回家') >= 0 || lower.indexOf('回家模式') >= 0;
+    const isWork = lower.indexOf('测试到公司') >= 0 || lower.indexOf('测试公司') >= 0 || lower.indexOf('到公司模式') >= 0;
+    if (!isHome && !isWork) {
+      return false;
+    }
+    this.appendMessage('user', visibleText);
+    this.inputText = inputTextAfterPromptSubmit(this.inputText);
+    this.isBusy = true;
+    this.isAwaitingFirstSurface = true;
+    const kind = isHome ? ModeKind.HOME : ModeKind.WORK;
+    aiLogInfo('[AIPhone][ModeTestTrigger] kind=' + kind);
+    try {
+      await this.modeManager.manualTrigger(kind);
+    } catch (e) {
+      aiLogError('[AIPhone][ModeTestTrigger] failed: ' + (e instanceof Error ? e.message : JSON.stringify(e)));
+    }
+    this.isBusy = false;
+    this.isAwaitingFirstSurface = false;
+    this.htmlHomeCacheKey = '';
+    this.htmlHomeCacheHtml = '';
+    this.syncHtmlHomeStableHtml();
+    this.htmlHomeStableHtml = '<html><body><h1>FORCE_RELOAD_TEST</h1><p>comps=' + this.currentSurface.components.length + ' dataChars=' + this.currentSurface.dataModelJson.length + '</p></body></html>';
+    this.appendMessage('assistant', isHome ? '已触发回家模式' : '已触发到公司模式');
+    return true;
+  }
+
+  private async tryModeSetupGuideTrigger(prompt: string, visibleText: string): Promise<boolean> {
+    const lower = prompt.toLowerCase();
+    if (lower.indexOf('关闭模式识别') >= 0 || lower.indexOf('取消模式识别') >= 0 || lower.indexOf('取消订阅') >= 0 ||
+      lower.indexOf('关闭围栏') >= 0 || lower.indexOf('取消围栏') >= 0 || lower.indexOf('停止模式识别') >= 0) {
+      this.appendMessage('user', visibleText);
+      this.inputText = inputTextAfterPromptSubmit(this.inputText);
+      if (this.modeManager !== null) {
+        this.modeManager.unsubscribe(ModeKind.HOME);
+        this.modeManager.unsubscribe(ModeKind.WORK);
+      }
+      this.appendMessage('assistant', '已取消家和公司围栏订阅。');
+      return true;
+    }
+    if (lower.indexOf('开启模式识别') >= 0 || lower.indexOf('开始模式识别') >= 0 || lower.indexOf('开启回家') >= 0 ||
+      lower.indexOf('开始回家') >= 0 || lower.indexOf('开启公司') >= 0 || lower.indexOf('开始公司') >= 0 ||
+      lower.indexOf('识别模式') >= 0 || lower.indexOf('设置模式识别') >= 0) {
+      this.appendMessage('user', visibleText);
+      this.inputText = inputTextAfterPromptSubmit(this.inputText);
+      const HOME_LAT = 34.152411;
+      const HOME_LNG = 108.850390;
+      const WORK_LAT = 34.196702;
+      const WORK_LNG = 108.834021;
+      const homeResult = await this.modeGuideSubscribeCoord(ModeKind.HOME, HOME_LAT, HOME_LNG);
+      const workResult = await this.modeGuideSubscribeCoord(ModeKind.WORK, WORK_LAT, WORK_LNG);
+      if (homeResult === '' && workResult === '') {
+        this.appendMessage('assistant', '已订阅家和公司围栏。到达对应地点会自动切换模式。');
+      } else {
+        this.appendMessage('assistant', '订阅结果：家=' + (homeResult === '' ? '成功' : '失败') + '；公司=' + (workResult === '' ? '成功' : '失败'));
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private async modeGuideSubscribeCoord(kind: ModeKind, latitude: number, longitude: number): Promise<string> {
+    if (this.modeManager === null) {
+      return 'mode系统未就绪';
+    }
+    try {
+      await this.ensureLocationPermission();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : JSON.stringify(error);
+      aiLogInfo('[AIPhone][ModeGuidePerm] failed: ' + msg);
+      return '定位权限未授权：' + msg;
+    }
+    const err = kind === ModeKind.HOME
+      ? this.modeManager.subscribeHome(latitude, longitude, 200)
+      : this.modeManager.subscribeWork(latitude, longitude, 200);
+    if (err !== '') {
+      aiLogInfo('[AIPhone][ModeGuideSubscribeFail] kind=' + kind + ' err=' + err);
+      return err;
+    }
+    if (kind === ModeKind.HOME) {
+      if (this.modeGeolocationStore !== null) {
+        this.modeGeolocationStore.saveFence(ModeKind.HOME, { latitude: latitude, longitude: longitude, radiusMeters: 200, label: '家' });
+      }
+      aiLogInfo('[AIPhone][ModeGuideHome] lat=' + latitude + ' lng=' + longitude);
+    } else {
+      if (this.modeGeolocationStore !== null) {
+        this.modeGeolocationStore.saveFence(ModeKind.WORK, { latitude: latitude, longitude: longitude, radiusMeters: 200, label: '公司' });
+      }
+      aiLogInfo('[AIPhone][ModeGuideWork] lat=' + latitude + ' lng=' + longitude);
+    }
+    return '';
+  }
+
+  private parseLatLng(input: string): ModeLatLng | null {
+    const normalized = input.trim().replace(/[（()）\s]+/g, ',');
+    const parts = normalized.split(',');
+    const numbers: number[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      const value = Number(parts[i].trim());
+      if (parts[i].trim().length > 0 && isFinite(value)) {
+        numbers.push(value);
+      }
+    }
+    if (numbers.length < 2) {
+      return null;
+    }
+    const latitude = numbers[0];
+    const longitude = numbers[1];
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return null;
+    }
+    return { latitude: latitude, longitude: longitude } as ModeLatLng;
+  }
+
+  private async tryModeSetLocationTrigger(prompt: string, visibleText: string): Promise<boolean> {
+    if (this.modeManager === null) {
+      return false;
+    }
+    const lower = prompt.toLowerCase();
+    const setHome = lower.indexOf('设为家') >= 0 || lower.indexOf('设家') >= 0 || lower.indexOf('标记家') >= 0 ||
+      lower.indexOf('定位家') >= 0 || lower.indexOf('把我家设') >= 0;
+    const setWork = lower.indexOf('设为公司') >= 0 || lower.indexOf('设公司') >= 0 || lower.indexOf('标记公司') >= 0 ||
+      lower.indexOf('定位公司') >= 0 || lower.indexOf('把我公司设') >= 0;
+    if (!setHome && !setWork) {
+      return false;
+    }
+    this.appendMessage('user', visibleText);
+    this.inputText = inputTextAfterPromptSubmit(this.inputText);
+    let latitude = 0;
+    let longitude = 0;
+    const typed = this.parseLatLng(setHome ? prompt.replace(/[设为家标记定位我]/g, '') : prompt.replace(/[设为公司标记定位我]/g, ''));
+    try {
+      if (typed !== null) {
+        latitude = typed.latitude;
+        longitude = typed.longitude;
+      } else {
+        const current = await geoLocationManager.getLastLocation();
+        if (current.latitude !== undefined && current.longitude !== undefined) {
+          latitude = current.latitude;
+          longitude = current.longitude;
+        }
+      }
+    } catch (error) {
+      aiLogError('[AIPhone][ModeSetLocation] failed: ' +
+        (error instanceof Error ? error.message : JSON.stringify(error)));
+    }
+    if (latitude === 0 && longitude === 0) {
+      this.appendMessage('assistant', '获取位置失败，请在回复中带上经纬度（如 设为家 31.2304,121.4737）。');
+      return true;
+    }
+    if (setHome) {
+      this.modeManager.subscribeHome(latitude, longitude, 200);
+      if (this.modeGeolocationStore !== null) {
+        this.modeGeolocationStore.saveFence(ModeKind.HOME, { latitude: latitude, longitude: longitude, radiusMeters: 200, label: '家' });
+      }
+      aiLogInfo('[AIPhone][ModeSetHome] lat=' + latitude + ' lng=' + longitude);
+      this.appendMessage('assistant', '已把当前位置设为「家」。到家附近会自动触发回家模式。');
+    } else {
+      this.modeManager.subscribeWork(latitude, longitude, 200);
+      if (this.modeGeolocationStore !== null) {
+        this.modeGeolocationStore.saveFence(ModeKind.WORK, { latitude: latitude, longitude: longitude, radiusMeters: 200, label: '公司' });
+      }
+      aiLogInfo('[AIPhone][ModeSetWork] lat=' + latitude + ' lng=' + longitude);
+      this.appendMessage('assistant', '已把当前位置设为「公司」。到公司附近会自动触发公司模式。');
+    }
+    return true;
   }
 
   private currentVoiceSession(seq: number): boolean {
@@ -2545,7 +2780,7 @@ struct Index {
     for (let index = 0; index < result.permissions.length; index++) {
       const permission = result.permissions[index];
       const granted = result.authResults.length > index && result.authResults[index] === 0;
-      if ((permission === PRECISE_LOCATION_PERMISSION || permission === APPROX_LOCATION_PERMISSION) && granted) {
+      if (permission === APPROX_LOCATION_PERMISSION && granted) {
         return true;
       }
     }
@@ -2555,7 +2790,7 @@ struct Index {
   private async ensureLocationPermission(): Promise<void> {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     const permission = await abilityAccessCtrl.createAtManager()
-      .requestPermissionsFromUser(context, [APPROX_LOCATION_PERMISSION, PRECISE_LOCATION_PERMISSION]);
+      .requestPermissionsFromUser(context, [APPROX_LOCATION_PERMISSION]);
     if (!this.locationPermissionGranted({
       permissions: permission.permissions,
       authResults: permission.authResults
@@ -2570,6 +2805,24 @@ struct Index {
       aiLogInfo('[AIPhone][LocationPermissionLaunch] ok=true');
     } catch (error) {
       aiLogError('[AIPhone][LocationPermissionLaunch] ok=false reason=' +
+        (error instanceof Error ? error.message : JSON.stringify(error)));
+    }
+  }
+
+  private async startModeGeofenceSubscriptions(): Promise<void> {
+    if (this.modeManager === null) {
+      return;
+    }
+    try {
+      const HOME_LAT = 34.152411;
+      const HOME_LNG = 108.850390;
+      const WORK_LAT = 34.196702;
+      const WORK_LNG = 108.834021;
+      this.modeManager.subscribeHome(HOME_LAT, HOME_LNG, 200);
+      this.modeManager.subscribeWork(WORK_LAT, WORK_LNG, 200);
+      aiLogInfo('[AIPhone][ModeGeofenceSubscribe] auto subscribed home and work');
+    } catch (error) {
+      aiLogError('[AIPhone][ModeGeofenceSubscribe] ok=false reason=' +
         (error instanceof Error ? error.message : JSON.stringify(error)));
     }
   }
@@ -3121,6 +3374,43 @@ struct Index {
 
   private async handleClientAction(action: A2uiAction): Promise<void> {
     aiLogInfo('[AIPhone][A2uiHomeClientAction] id=' + action.id);
+    if (action.id === 'mode.music.play') {
+      const args = action.args as ModeMusicPlayArgs;
+      const url = args === undefined || this.actionText(args.url).trim().length === 0
+        ? action.prompt : this.actionText(args.url);
+      aiLogInfo('[AIPhone][ModeMusicPlay] url=' + url);
+      await this.openExternalUrl(url);
+      this.appendMessage('assistant', '正在播放：' + (args === undefined ? '' : this.actionText(args.title)));
+      return;
+    }
+    if (action.id === 'mode.smart_home.toggle') {
+      const args = action.args as ModeSmartHomeToggleArgs;
+      if (args === undefined || this.actionText(args.device).trim().length === 0) {
+        this.logHtmlHomeActionError(action, 'missing_smart_home_args');
+        return;
+      }
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const ok = SmartHomeControlBehavior.writeDeviceState(ctx, this.actionText(args.device), args.next === true);
+      const label = this.actionText(args.name).length > 0 ? this.actionText(args.name) : this.actionText(args.device);
+      if (ok) {
+        if (this.modeManager !== null) {
+          const active = this.modeManager.activeModeKind();
+          if (active !== null) {
+            await this.modeManager.reTrigger(active);
+          } else {
+            this.applySurface(this.currentSurface);
+          }
+        }
+        this.appendMessage('assistant', label + '已' + (args.next === true ? '开启' : '关闭'));
+      } else {
+        this.appendMessage('assistant', label + '切换失败');
+      }
+      return;
+    }
+    if (action.id === 'mode.dnd.enable') {
+      this.appendMessage('assistant', '勿扰功能将在后续版本真正接入系统，敬请期待。');
+      return;
+    }
     if (action.id === 'html_mail_detail_read') {
       if (action.args === undefined) {
         this.logHtmlHomeActionError(action, 'missing_mail_detail_args');

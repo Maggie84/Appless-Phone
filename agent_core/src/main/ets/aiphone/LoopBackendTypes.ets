@@ -1,6 +1,7 @@
 import { AgentEvent } from '../agent/AgentEvent';
 import { SkillMatcher } from '../agent/SkillMatcher';
 import { SkillSnapshot } from '../skill/SkillSnapshot';
+import { ModeApi } from '../agent/ModeApi';
 import { CliRuntime } from '@loop/cli-runtime';
 import { A2uiSurfaceState } from './runtime/A2uiTypes';
 
@@ -31,6 +32,7 @@ export interface LoopBackendRequest {
   cliRuntime?: CliRuntime;
   skillSnapshot?: SkillSnapshot;
   skillMatcher?: SkillMatcher;
+  modeApi?: ModeApi;
 }
 
 export interface LoopBackendCallbacks {

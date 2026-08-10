@@ -1,6 +1,7 @@
 import { AgentEvent, AgentEventKind } from '../agent/AgentEvent';
 import { AgentTool } from '../agent/AgentTool';
 import { CliExecTool } from '../agent/CliExecTool';
+import { ModeSubscribeHomeTool, ModeSubscribeWorkTool, ModeManualTriggerTool } from '../agent/ModeSubscribeTool';
 import { ConversationContext } from '../agent/ConversationContext';
 import { ReActAgentRunner } from '../agent/ReActAgentRunner';
 import { SkillReadTool } from '../skill/SkillReadTool';
@@ -322,6 +323,11 @@ export class LoopBackend {
     }
     if (request.skillSnapshot !== undefined && request.skillSnapshot !== null && !request.skillSnapshot.isEmpty()) {
       registry.register(new SkillReadTool(request.skillSnapshot));
+    }
+    if (request.modeApi !== undefined && request.modeApi !== null) {
+      registry.register(new ModeSubscribeHomeTool(request.modeApi));
+      registry.register(new ModeSubscribeWorkTool(request.modeApi));
+      registry.register(new ModeManualTriggerTool(request.modeApi));
     }
     return registry;
   }

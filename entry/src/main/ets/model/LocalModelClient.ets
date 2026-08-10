@@ -1,4 +1,4 @@
-import { AgentEvent, LoopBackend, LoopBackendRequest, LoopMessage, LoopToolTrace, SkillMatcher, SkillSnapshot, createSkillSnapshot } from '@loop/agent-core';
+import { AgentEvent, LoopBackend, LoopBackendRequest, LoopMessage, LoopToolTrace, SkillMatcher, SkillSnapshot, createSkillSnapshot, ModeApi } from '@loop/agent-core';
 import { CliRuntime } from '@loop/cli-runtime';
 import { abilityAccessCtrl, common, Permissions } from '@kit.AbilityKit';
 import {
@@ -35,9 +35,14 @@ export type PersonaMemoryUpdateCallback = (update: PersonaMemoryUpdateRequest) =
 let _cliRuntime: CliRuntime | null = null;
 let _skillSnapshot: SkillSnapshot | null = null;
 let _skillMatcher: SkillMatcher | null = null;
+let _modeApi: ModeApi | null = null;
 
 export function setCliRuntime(runtime: CliRuntime | null): void {
   _cliRuntime = runtime;
+}
+
+export function setModeApi(modeApi: ModeApi | null): void {
+  _modeApi = modeApi;
 }
 
 export async function initSkillSystem(context: common.UIAbilityContext): Promise<void> {
@@ -278,7 +283,8 @@ export async function callLocalModel(
     maxSteps: 6,
     cliRuntime: _cliRuntime ?? undefined,
     skillSnapshot: _skillSnapshot ?? undefined,
-    skillMatcher: _skillMatcher ?? undefined
+    skillMatcher: _skillMatcher ?? undefined,
+    modeApi: _modeApi ?? undefined
   };
 
   try {

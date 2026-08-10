@@ -3,6 +3,9 @@ export { clearStoredConversation, loadConversation, saveConversation } from './s
 export { AgentEvent, AgentEventKind } from './src/main/ets/agent/AgentEvent';
 export { AgentTool } from './src/main/ets/agent/AgentTool';
 export { CliExecTool } from './src/main/ets/agent/CliExecTool';
+export { ModeSubscribeHomeTool, ModeSubscribeWorkTool, ModeManualTriggerTool } from './src/main/ets/agent/ModeSubscribeTool';
+export { ModeApi } from './src/main/ets/agent/ModeApi';
+export { ModeKind } from './src/main/ets/agent/ModeKind';
 export { SkillMatcher } from './src/main/ets/agent/SkillMatcher';
 export { adaptSkillToCli } from './src/main/ets/cli/SkillAdapter';
 export { A2uiObservationDigest, summarizeA2uiObservation } from './src/main/ets/agent/A2uiObservationDigest';

@@ -1046,6 +1046,9 @@ function isThinkingBlock(block: HtmlHomeBlock): boolean {
 }
 
 function kindOf(surface: A2uiSurfaceState): HtmlHomeKind {
+  if (surface.intent.indexOf('mode-') === 0) {
+    return 'mode';
+  }
   if (hasComponent(surface, A2UI_COMPONENT_SOCIAL_HUB) || surface.intent === 'social') {
     return 'social';
   }

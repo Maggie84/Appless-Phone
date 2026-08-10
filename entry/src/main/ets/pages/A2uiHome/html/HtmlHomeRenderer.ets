@@ -4,6 +4,7 @@ import { renderCalendarHomeDocument, shouldRenderCalendarHomeDocument } from './
 import { renderFoodHomeDocument, shouldRenderFoodHomeDocument } from './HtmlFoodHomeRenderer';
 import { renderHotelHomeDocument, shouldRenderHotelHomeDocument } from './HtmlHotelHomeRenderer';
 import { renderMediaHomeDocument, shouldRenderMediaHomeDocument } from './HtmlMediaHomeRenderer';
+import { renderModeHomeDocument, shouldRenderModeHomeDocument } from './HtmlModeHomeRenderer';
 import { renderPaymentHomeDocument, shouldRenderPaymentHomeDocument } from './HtmlPaymentHomeRenderer';
 import { renderRideHailingHomeDocument, shouldRenderRideHailingHomeDocument } from './HtmlRideHailingHomeRenderer';
 import { renderTravelHomeDocument, shouldRenderTravelHomeDocument } from './HtmlTravelHomeRenderer';
@@ -5411,6 +5412,9 @@ export function renderHtmlHomeDocument(document: HtmlHomeDocument, isBusy: boole
   }
   if (shouldRenderMediaHomeDocument(document)) {
     return renderMediaHomeDocument(document, isBusy);
+  }
+  if (shouldRenderModeHomeDocument(document)) {
+    return renderModeHomeDocument(document, isBusy);
   }
   if (shouldRenderTravelHomeDocument(document)) {
     return renderTravelHomeDocument(document, isBusy);
