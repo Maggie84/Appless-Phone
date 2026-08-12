@@ -52,6 +52,13 @@ export class CliExecTool implements AgentTool {
     }
 
     const result: CliResult = await this.cliRuntime.execute(skillStr, commandStr, params);
-    return result.toObservation();
+    const obs = result.toObservation();
+    if (result.stdout.indexOf('ERR_BT_ENABLE_FAILED') >= 0) {
+      return '蓝牙已经是开启状态，不能重复打开。';
+    }
+    if (result.stdout.indexOf('ERR_BT_DISABLE_FAILED') >= 0) {
+      return '蓝牙已经是关闭状态，不能重复关闭。';
+    }
+    return obs;
   }
 }

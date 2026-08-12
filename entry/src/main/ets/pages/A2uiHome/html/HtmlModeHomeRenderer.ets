@@ -114,7 +114,7 @@ img { display: block; }
   margin-top: 14px;
   max-width: 10em;
   overflow-wrap: anywhere;
-  font-size: 36px;
+  font-size: 28px;
   line-height: 1.04;
   font-weight: 860;
 }
@@ -122,7 +122,7 @@ img { display: block; }
   margin-top: 10px;
   max-width: 32em;
   color: rgba(23, 18, 13, 0.76);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -168,12 +168,12 @@ img { display: block; }
   position: relative;
   overflow: hidden;
   border: 1px solid rgba(23, 18, 13, 0.1);
-  border-radius: 22px;
+  border-radius: 16px;
   padding: 0;
   background:
     linear-gradient(135deg, var(--source-soft), rgba(255, 250, 241, 0) 54%),
     var(--card-bg);
-  box-shadow: var(--shadow);
+  box-shadow: 0 8px 22px rgba(37, 24, 13, 0.08);
 }
 .mode-card[data-source="bilibili"] {
   --source-accent: var(--bilibili);
@@ -207,20 +207,64 @@ img { display: block; }
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 18px 6px;
+  padding: 12px 14px 4px;
+}
+.mode-card.is-collapsible .mode-card-head {
+  align-items: center;
+  min-height: 58px;
+  padding-bottom: 12px;
+  cursor: pointer;
+}
+.mode-card-head-tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.mode-card-toggle {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(23, 18, 13, 0.1);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--source-accent);
+  font-size: 17px;
+  line-height: 1;
+}
+.mode-card-body {
+  overflow: hidden;
+}
+.mode-card.is-collapsible:not(.is-expanded) .mode-card-body {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.mode-card.is-collapsible.is-expanded .mode-card-body {
+  max-height: 1200px;
+  opacity: 1;
+  pointer-events: auto;
+}
+.mode-card.is-collapsible:not(.is-expanded) .mode-card-head p {
+  overflow: hidden;
+  max-width: 36em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .mode-card-head h3 {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--ink);
-  font-size: 18px;
+  font-size: 14px;
   line-height: 1.22;
   font-weight: 820;
 }
 .mode-card-head p {
   margin-top: 7px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -248,8 +292,8 @@ img { display: block; }
 .mode-card-player {
   position: relative;
   overflow: hidden;
-  border-radius: 18px;
-  margin: 12px 18px 0;
+  border-radius: 12px;
+  margin: 8px 14px 0;
   aspect-ratio: 16 / 9;
   background: #080604;
 }
@@ -261,17 +305,17 @@ img { display: block; }
 }
 .mode-rows {
   display: grid;
-  gap: 8px;
-  padding: 12px 18px 4px;
+  gap: 5px;
+  padding: 8px 14px 2px;
 }
 .mode-row {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
   align-items: start;
   border: 1px solid rgba(23, 18, 13, 0.07);
-  border-radius: 14px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 7px 9px;
   background: rgba(255, 250, 241, 0.64);
 }
 .mode-row .label {
@@ -283,13 +327,13 @@ img { display: block; }
 }
 .mode-row .value {
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 650;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 .mode-card-action {
-  margin: 14px 18px 18px;
+  margin: 8px 14px 12px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -298,8 +342,9 @@ img { display: block; }
   min-width: 0;
   border: 1px solid rgba(23, 18, 13, 0.1);
   border-radius: 999px;
-  min-height: 40px;
-  padding: 9px 14px;
+  min-height: 30px;
+  padding: 6px 12px;
+  font-size: 12px;
   background: rgba(255, 250, 241, 0.78);
   color: var(--ink);
   font-weight: 700;
@@ -326,6 +371,31 @@ img { display: block; }
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+}
+.mode-card[data-source="home"] .mode-rows,
+.mode-card[data-source="dnd"] .mode-rows {
+  padding-top: 5px;
+}
+.mode-card[data-source="home"] .mode-row,
+.mode-card[data-source="dnd"] .mode-row {
+  border: 0;
+  background: transparent;
+  padding: 3px 0;
+}
+.mode-card[data-source="home"] .mode-card-action .mode-btn {
+  min-width: 62px;
+  border-radius: 9px;
+}
+.mode-card[data-source="home"] .mode-card-action .mode-btn.primary {
+  color: #fff;
+  background: var(--home);
+}
+.mode-card[data-source="home"] .mode-card-action .mode-btn.danger {
+  color: #fff;
+  background: #b04a42;
+}
+.mode-card[data-source="dnd"] {
+  max-width: 420px;
 }
 @media (min-width: 720px) {
   .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -403,8 +473,27 @@ const MODE_HOME_JS: string = `
   }
   function rowsOf(block) {
     return list(block && block.rows).concat(list(block && block.metrics)).filter(function (item) {
-      return text(item && item.label).length > 0 && text(item && item.value).length > 0;
+      var label = text(item && item.label).toLowerCase();
+      return text(item && item.label).length > 0 && text(item && item.value).length > 0 &&
+        label !== 'toolname' && label !== 'watch url' && label !== 'bvid' && label !== 'video id';
     });
+  }
+  function actionsOf(block) {
+    return list(block && block.actions).filter(function (action) {
+      return text(action && (action.label || action.id)).length > 0;
+    });
+  }
+  function shouldCollapse(block, key) {
+    return playable(block) || rowsOf(block).length > 2 || actionsOf(block).length > 1 || key === 'mail';
+  }
+  function expansionKey(block, index) {
+    return 'mode-card-expanded-' + text(block && block.id || index);
+  }
+  function readExpanded(key) {
+    try { return window.sessionStorage && window.sessionStorage.getItem(key) === '1'; } catch (error) { return false; }
+  }
+  function saveExpanded(key, expanded) {
+    try { if (window.sessionStorage) { window.sessionStorage.setItem(key, expanded ? '1' : '0'); } } catch (error) {}
   }
   function isGenericTitle(value) {
     var raw = trim(value);
@@ -491,35 +580,58 @@ const MODE_HOME_JS: string = `
     var key = sourceOf(block);
     var card = add(grid, 'article', 'mode-card');
     card.setAttribute('data-source', key);
+    var collapsible = shouldCollapse(block, key);
+    var stateKey = expansionKey(block, index);
+    if (collapsible) { card.className += ' is-collapsible'; }
+    if (collapsible && readExpanded(stateKey)) { card.className += ' is-expanded'; }
     var head = add(card, 'div', 'mode-card-head');
     var copy = add(head, 'div');
     add(copy, 'h3', '', text(block.title) || sourceLabel(key));
     if (text(block.subtitle).length > 0) { add(copy, 'p', '', block.subtitle); }
-    var badge = add(head, 'span', 'mode-badge');
+    var headTools = add(head, 'div', 'mode-card-head-tools');
+    var badge = add(headTools, 'span', 'mode-badge');
     var logoUrl = sourceLogoUrl(key);
     if (logoUrl.length > 0) { add(badge, 'img').src = logoUrl; }
     add(badge, 'span', '', sourceLabel(key));
-    if (playable(block)) { renderPlayer(card, block, 'mode-card-player'); }
+    var toggle = null;
+    if (collapsible) {
+      toggle = add(headTools, 'button', 'mode-card-toggle', card.className.indexOf('is-expanded') >= 0 ? '×' : '+');
+      toggle.type = 'button';
+      toggle.setAttribute('aria-label', card.className.indexOf('is-expanded') >= 0 ? '收起卡片' : '展开卡片');
+    }
+    var body = add(card, 'div', 'mode-card-body');
+    if (playable(block)) { renderPlayer(body, block, 'mode-card-player'); }
     var rows = rowsOf(block);
     if (rows.length > 0) {
-      var rowsEl = add(card, 'div', 'mode-rows');
+      var rowsEl = add(body, 'div', 'mode-rows');
       rows.forEach(function (row) {
         var r = add(rowsEl, 'div', 'mode-row');
         add(r, 'div', 'label', row.label);
         add(r, 'div', 'value', row.value);
       });
     }
-    var actions = list(block && block.actions).filter(function (action) {
-      return text(action && (action.label || action.id)).length > 0;
-    });
+    var actions = actionsOf(block);
     if (actions.length > 0) {
-      var actionRow = add(card, 'div', 'mode-card-action');
+      var actionRow = add(body, 'div', 'mode-card-action');
       actions.forEach(function (action) {
         var btn = add(actionRow, 'button', 'mode-btn ' + text(action.variant && action.variant !== 'secondary' ? action.variant : ''));
         btn.type = 'button';
         btn.textContent = text(action.label || action.id);
         btn.disabled = isBusy;
         btn.addEventListener('click', function (event) { event.stopPropagation(); postAction(action); });
+      });
+    }
+    if (collapsible) {
+      var setExpanded = function (expanded) {
+        if (expanded) { card.classList.add('is-expanded'); } else { card.classList.remove('is-expanded'); }
+        toggle.textContent = expanded ? '×' : '+';
+        toggle.setAttribute('aria-label', expanded ? '收起卡片' : '展开卡片');
+        saveExpanded(stateKey, expanded);
+      };
+      head.addEventListener('click', function () { setExpanded(!card.classList.contains('is-expanded')); });
+      toggle.addEventListener('click', function (event) {
+        event.stopPropagation();
+        setExpanded(!card.classList.contains('is-expanded'));
       });
     }
   });

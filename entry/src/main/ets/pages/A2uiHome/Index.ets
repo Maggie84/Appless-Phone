@@ -34,6 +34,7 @@ import { ModeManager } from '../../modes/ModeManager';
 import { GeofenceApi } from '../../modes/triggers/GeofenceApi';
 import { ModeGeolocationStore } from '../../modes/triggers/ModeGeolocationStore';
 import { SmartHomeControlBehavior } from '../../modes/behaviors/SmartHomeControlBehavior';
+import { DoNotDisturbBehavior } from '../../modes/behaviors/DoNotDisturbBehavior';
 import { ModeKind } from '@loop/agent-core';
 import { GMAIL_MCP_AUTH_SETUP_URL, GMAIL_WEB_URL, GOOGLE_CALENDAR_WEB_URL, GOOGLE_OAUTH_SETUP_URL } from '@loop/agent-core';
 import { A2uiSurfaceStore, createSeedA2uiSurface } from '@loop/agent-core';
@@ -142,6 +143,10 @@ interface ModeSmartHomeToggleArgs {
   next: boolean;
 }
 
+interface ModeDndEnableArgs {
+  enabled: boolean;
+}
+
 const CONNECTION_TEST_PROMPT: string = '连接检查：请返回 A2UI v0.9.1 setup surface，说明 Local API 已可用。';
 const TOOL_GATEWAY_URL: string = defaultToolGatewayUrl();
 const initialConnectionState: ConnectionPanelState = createInitialConnectionPanelState();
@@ -160,6 +165,7 @@ const READ_CALENDAR_PERMISSION: Permissions = 'ohos.permission.READ_CALENDAR';
 const WRITE_CALENDAR_PERMISSION: Permissions = 'ohos.permission.WRITE_CALENDAR';
 const APPROX_LOCATION_PERMISSION: Permissions = 'ohos.permission.APPROXIMATELY_LOCATION';
 const PRECISE_LOCATION_PERMISSION: Permissions = 'ohos.permission.LOCATION';
+const BLUETOOTH_PERMISSION: Permissions = 'ohos.permission.ACCESS_BLUETOOTH';
 
 interface ModeLatLng {
   latitude: number;
@@ -1803,6 +1809,12 @@ struct Index {
     if (await this.tryModeSetLocationTrigger(trimmed, visibleText)) {
       return;
     }
+    const lower = trimmed.toLowerCase();
+    if (lower.indexOf('蓝牙') >= 0 || lower.indexOf('bluetooth') >= 0) {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await abilityAccessCtrl.createAtManager()
+        .requestPermissionsFromUser(context, [BLUETOOTH_PERMISSION]);
+    }
     const modelPrompt = modelPromptWithActionContext(trimmed, actionId, actionArgs);
     if (this.baseUrl.trim().length === 0) {
       aiLogError('[AIPhone][A2uiHomeSubmitBlocked] missingBaseUrl');
@@ -3408,7 +3420,21 @@ struct Index {
       return;
     }
     if (action.id === 'mode.dnd.enable') {
-      this.appendMessage('assistant', '勿扰功能将在后续版本真正接入系统，敬请期待。');
+      const args = action.args as ModeDndEnableArgs;
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const enabled = args !== undefined && args.enabled === true;
+      const ok = await DoNotDisturbBehavior.setEnabled(ctx, enabled);
+      if (ok) {
+        if (this.modeManager !== null) {
+          const active = this.modeManager.activeModeKind();
+          if (active !== null) {
+            await this.modeManager.reTrigger(active);
+          }
+        }
+        this.appendMessage('assistant', enabled ? '勿扰模式已开启' : '勿扰模式已关闭');
+      } else {
+        this.appendMessage('assistant', '勿扰模式切换失败，请确认应用已获得系统设置权限。');
+      }
       return;
     }
     if (action.id === 'html_mail_detail_read') {

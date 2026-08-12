@@ -53,7 +53,7 @@ export class SmartHomeControlBehavior implements ModeBehavior {
       const toggleArgs: SmartHomeToggleArgs = new SmartHomeToggleArgs(device.key, device.name, !on);
       actions.push({
         id: 'mode.smart_home.toggle',
-        label: '切换' + device.name,
+        label: on ? '关闭' : '开启',
         prompt: '切换智能设备：' + device.name,
         variant: on ? 'danger' : 'primary',
         kind: 'client',

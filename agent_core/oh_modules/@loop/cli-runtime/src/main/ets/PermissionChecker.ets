@@ -1,6 +1,7 @@
 import { abilityAccessCtrl, common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { CliCommand } from './types/CliSkill';
+import type { Permissions } from '@kit.AbilityKit';
 
 const DOMAIN = 0xFF;
 const LOG_TAG = 'PermissionChecker';
@@ -57,11 +58,19 @@ export class PermissionChecker {
             } else if (perm === 'ohos.permission.GET_BUNDLE_INFO') {
               status = await atManager.checkAccessToken(tokenId, 'ohos.permission.GET_BUNDLE_INFO');
             }
+          if (status !== abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
+              if (perm === 'ohos.permission.ACCESS_BLUETOOTH') {
+                const btPerm: Permissions = 'ohos.permission.ACCESS_BLUETOOTH';
+                await atManager.requestPermissionsFromUser(this.context, [btPerm]);
+                status = await atManager.checkAccessToken(tokenId, 'ohos.permission.ACCESS_BLUETOOTH');
+              }
+            }
             if (status !== abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
               missing.push(perm);
             }
           } catch (_e1) {
-            hilog.warn(DOMAIN, LOG_TAG, 'skip check %{public}s (unchecked)', perm);
+            const msg = _e1 instanceof Error ? _e1.message : `${_e1}`;
+            hilog.warn(DOMAIN, LOG_TAG, 'check %{public}s error: %{public}s', perm, msg);
           }
         }
       }

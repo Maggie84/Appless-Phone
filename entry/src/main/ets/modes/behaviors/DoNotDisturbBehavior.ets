@@ -1,10 +1,13 @@
-import { A2uiAction, A2uiGenericToolResultData, A2uiGenericToolResultRowData } from '@loop/agent-core';
+﻿import { A2uiAction, A2uiGenericToolResultData, A2uiGenericToolResultRowData } from '@loop/agent-core';
 import { ModeContext, ModeBehavior } from '../core/ModeBehavior';
 import { ModeBehaviorResult } from '../core/ModeTypes';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { common } from '@kit.AbilityKit';
 
 const DOMAIN = 0xFF;
 const LOG_TAG = 'DoNotDisturbBehavior';
+const DB_PATH = '/data/app/el1/0/database/com.ohos.settingsdata/entry/rdb/settingsdata.db';
+const FOCUS_MODE_KEY = 'focus_mode_enable';
 
 class DndEnableArgs {
   enabled: boolean;
@@ -14,19 +17,82 @@ class DndEnableArgs {
   }
 }
 
+interface DbResult {
+  ok: boolean;
+  stdout: string;
+  error: string;
+}
+
+class DoNotDisturbBridge {
+  private static mod: Record<string, Object> | null = null;
+
+  private static async ensureMod(): Promise<Record<string, Object> | null> {
+    if (DoNotDisturbBridge.mod !== null) {
+      return DoNotDisturbBridge.mod;
+    }
+    try {
+      const m = await import('libcli_bridge.so') as Record<string, Object>;
+      DoNotDisturbBridge.mod = (m['default'] as Record<string, Object>) ?? m;
+      return DoNotDisturbBridge.mod;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '' + e;
+      hilog.error(DOMAIN, LOG_TAG, 'load libcli_bridge failed: %{public}s', msg);
+      return null;
+    }
+  }
+
+  static async query(sql: string): Promise<DbResult> {
+    const mod = await DoNotDisturbBridge.ensureMod();
+    if (mod === null) {
+      return { ok: false, stdout: '', error: 'mod not loaded' };
+    }
+    try {
+      const fn = mod['dbQuery'] as CallableFunction;
+      if (typeof fn !== 'function') {
+        return { ok: false, stdout: '', error: 'dbQuery not found' };
+      }
+      const raw = fn(DB_PATH, sql) as Record<string, Object>;
+      return {
+        ok: (raw['ok'] as boolean) ?? false,
+        stdout: (raw['stdout'] as string) ?? '',
+        error: (raw['error'] as string) ?? ''
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '' + e;
+      return { ok: false, stdout: '', error: msg };
+    }
+  }
+
+  static async exec(sql: string): Promise<DbResult> {
+    const mod = await DoNotDisturbBridge.ensureMod();
+    if (mod === null) {
+      return { ok: false, stdout: '', error: 'mod not loaded' };
+    }
+    try {
+      const fn = mod['dbExec'] as CallableFunction;
+      if (typeof fn !== 'function') {
+        return { ok: false, stdout: '', error: 'dbExec not found' };
+      }
+      const raw = fn(DB_PATH, sql) as Record<string, Object>;
+      return {
+        ok: (raw['ok'] as boolean) ?? false,
+        stdout: '',
+        error: (raw['error'] as string) ?? ''
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '' + e;
+      return { ok: false, stdout: '', error: msg };
+    }
+  }
+}
+
 export class DoNotDisturbBehavior implements ModeBehavior {
   readonly name = 'do-not-disturb';
   readonly displayName = '开启勿扰模式';
 
-  async execute(_ctx: ModeContext): Promise<ModeBehaviorResult> {
+  async execute(ctx: ModeContext): Promise<ModeBehaviorResult> {
     hilog.info(DOMAIN, LOG_TAG, 'do not disturb activated');
-
-    // TODO(real-exec): HarmonyOS 普通应用没有系统级勿扰 API。
-    // 真正的执行方式待后续确认，可能方案：
-    //   1. context.startAbility 拉起系统勿扰/专注模式设置页
-    //   2. notificationManager.publish 推一条真实系统通知
-    //   3. 或本地持久化勿扰开关状态
-    const dndEnabled = await this.applyDoNotDisturb(_ctx);
+    const dndEnabled = await DoNotDisturbBehavior.isEnabled(ctx.context);
 
     const rows: A2uiGenericToolResultRowData[] = [
       { label: '状态', value: dndEnabled ? '已开启' : '待开启' },
@@ -37,7 +103,7 @@ export class DoNotDisturbBehavior implements ModeBehavior {
     const actions: A2uiAction[] = [
       {
         id: 'mode.dnd.enable',
-        label: '开启勿扰',
+        label: dndEnabled ? '关闭勿扰' : '开启勿扰',
         prompt: '开启勿扰模式',
         variant: 'primary',
         kind: 'client',
@@ -63,8 +129,18 @@ export class DoNotDisturbBehavior implements ModeBehavior {
     };
   }
 
-  // TODO(real-exec): 真正的系统勿扰执行入口，当前为占位桩。
-  private async applyDoNotDisturb(_ctx: ModeContext): Promise<boolean> {
-    return false;
+  static async isEnabled(context: common.UIAbilityContext): Promise<boolean> {
+    const sql = 'SELECT VALUE FROM USER_SETTINGSDATA_SECURE_100 WHERE KEYWORD=\'' + FOCUS_MODE_KEY + '\';';
+    const result = await DoNotDisturbBridge.query(sql);
+    hilog.info(DOMAIN, LOG_TAG, 'read focus_mode_enable ok=%{public}s stdout=%{public}s err=%{public}s', '' + result.ok, result.stdout, result.error);
+    return result.ok && result.stdout.trim() === '1';
+  }
+
+  static async setEnabled(context: common.UIAbilityContext, enabled: boolean): Promise<boolean> {
+    const val = enabled ? '1' : '0';
+    const sql = 'UPDATE USER_SETTINGSDATA_SECURE_100 SET VALUE=\'' + val + '\' WHERE KEYWORD=\'' + FOCUS_MODE_KEY + '\';';
+    const result = await DoNotDisturbBridge.exec(sql);
+    hilog.info(DOMAIN, LOG_TAG, 'set focus mode enabled=%{public}s ok=%{public}s err=%{public}s', '' + enabled, '' + result.ok, result.error);
+    return result.ok;
   }
 }
