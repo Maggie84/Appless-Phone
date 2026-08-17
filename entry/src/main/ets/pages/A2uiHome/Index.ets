@@ -1977,7 +1977,7 @@ struct Index {
       this.appendMessage('assistant', '已取消家和公司围栏订阅。');
       return true;
     }
-    if (lower.indexOf('开启模式识别') >= 0 || lower.indexOf('开始模式识别') >= 0 || lower.indexOf('开启回家') >= 0 ||
+    if (lower.indexOf('开启模式识别') >= 0 || lower.indexOf('开始模式识别') >= 0 || lower.indexOf('开始家和公司模式') >= 0|| lower.indexOf('开启回家') >= 0 ||
       lower.indexOf('开始回家') >= 0 || lower.indexOf('开启公司') >= 0 || lower.indexOf('开始公司') >= 0 ||
       lower.indexOf('识别模式') >= 0 || lower.indexOf('设置模式识别') >= 0) {
       this.appendMessage('user', visibleText);

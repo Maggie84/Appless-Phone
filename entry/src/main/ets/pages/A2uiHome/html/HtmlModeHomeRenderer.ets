@@ -76,6 +76,22 @@ img { display: block; }
   background-position: center;
   transform: scale(1.12);
 }
+.mode-hero.mode-home::before {
+  background-image:
+    linear-gradient(135deg, rgba(16, 30, 13, 0.38), rgba(13, 43, 35, 0.18)),
+    url('https://picsum.photos/seed/home/800/1200');
+}
+.mode-hero.mode-work::before {
+  background-image:
+    linear-gradient(135deg, rgba(8, 20, 38, 0.4), rgba(24, 53, 78, 0.18)),
+    url('https://picsum.photos/seed/office/800/1200');
+}
+.mode-hero.mode-home {
+  background: #0f1808;
+}
+.mode-hero.mode-work {
+  background: #0a1420;
+}
 .mode-hero::after {
   content: "";
   position: absolute;
@@ -558,6 +574,12 @@ const MODE_HOME_JS: string = `
   app.textContent = '';
   var shell = add(app, 'main', 'mode-shell');
   var hero = add(shell, 'header', 'mode-hero');
+  var heroTitleRaw = trim(data.title).toLowerCase();
+  if (heroTitleRaw.indexOf('回家') >= 0 || heroTitleRaw.indexOf('home') >= 0) {
+    hero.className += ' mode-home';
+  } else if (heroTitleRaw.indexOf('公司') >= 0 || heroTitleRaw.indexOf('work') >= 0) {
+    hero.className += ' mode-work';
+  }
   var heroGrid = add(hero, 'div', 'mode-hero-grid');
   var heroCopy = add(heroGrid, 'div', 'mode-hero-copy');
   var kicker = add(heroCopy, 'div', 'mode-kicker');
