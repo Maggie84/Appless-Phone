@@ -29,13 +29,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "C:\\Users\\74431\\.ohos\\config\\default_Appless-Phone_oB_yT96FHNV_u9k2Ca38mGx9kN0u0VYC4f5aLsb3cWE=.cer",
+          "certpath": "C:\\Users\\74431\\.ohos\\config\\default_Appless-Phone_kJieBXW8xGqXQVeWYO3YsCVakW1vfnNeI6XRxss32Ms=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001AC991CAD3B7451B86A2D702332779200BEA400686CDCE264C144DE7B068CFF61AF4EA53C7EC44",
-          "profile": "C:\\Users\\74431\\.ohos\\config\\default_Appless-Phone_oB_yT96FHNV_u9k2Ca38mGx9kN0u0VYC4f5aLsb3cWE=.p7b",
+          "keyPassword": "0000001B24ED9C8F3A8CD8DFBCCFD50D08E5D28E1D2AF6F98605020E7A06AE140D9459C8428FA6C1EAB79D",
+          "profile": "C:\\Users\\74431\\.ohos\\config\\default_Appless-Phone_kJieBXW8xGqXQVeWYO3YsCVakW1vfnNeI6XRxss32Ms=.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\74431\\.ohos\\config\\default_Appless-Phone_oB_yT96FHNV_u9k2Ca38mGx9kN0u0VYC4f5aLsb3cWE=.p12",
-          "storePassword": "0000001A5250AEE483920BFFE1F97E7404200A124255FAD280C2EBB39E6B0FAA93307B6E0724A835ED19"
+          "storeFile": "C:\\Users\\74431\\.ohos\\config\\default_Appless-Phone_kJieBXW8xGqXQVeWYO3YsCVakW1vfnNeI6XRxss32Ms=.p12",
+          "storePassword": "0000001B67D6DFB49872909D849923AB087364DCFF039836F1FD5F463D25BB82B354B4F176B1D0629EF14E"
         }
       }
     ]

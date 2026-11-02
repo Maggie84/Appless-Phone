@@ -10,11 +10,13 @@
 
 ### 1. 地理围栏（@ohos.geofence）
 
-**用途**：基于位置的自动模式切换（到家→回家模式，到公司→公司模式）。
+**用途**：基于位置的自动模式切换（到家→回家模式，到公司→公司模式）+ 离开公司自动上报车机 BBP。
 
 **底层模块**：`@ohos.geofence`（NAPI 模块）
 
 **接入链路**：
+
+**链路 A — 模式切换（ENTER 事件）**：
 ```
 用户输入"开始模式识别"
   └─ Index.ets: tryModeSetupGuideTrigger
@@ -29,13 +31,26 @@
                                                └─ 激活对应模式 + 渲染 surface
 ```
 
+**链路 B — 离开公司上报车机 BBP（EXIT 事件）**：
+```
+geofence.subscribe 回调 GeofenceResponse (GEOFENCE_EXIT)
+  └─ GeofenceApi.notify(label='公司', transition='exit')
+       └─ Index.ets: registerBbpOfficeExitListener 中注册的 'bbp-office-exit' listener
+            ├─ exit → reportDetectedOfficeExit
+            │         └─ sendBbpOfficeExitMessage → POST {endpoint}/information-center/v1/mobile/messages
+            │              └─ pollBbpOfficeExitResult (2s×15 轮询回执)
+            └─ enter → reportDetectedOfficeArrival
+                      └─ sendBbpOfficeArrivalReset → POST 重置车机场景
+```
+
 **关键文件**：
 | 文件 | 职责 |
 |------|------|
-| `entry/src/main/ets/modes/triggers/GeofenceApi.ets` | NAPI 调用封装，实现 `LocationApi` 接口 |
-| `entry/src/main/ets/modes/triggers/LocationSubscription.ets` | 围栏订阅管理 + 进入/退出分发 |
+| `entry/src/main/ets/modes/triggers/GeofenceApi.ets` | NAPI 调用封装，实现 `LocationApi` 接口；`setTransitionListener` 支持多 listener 按 `listenerId` 注册 ENTER/EXIT 回调 |
+| `entry/src/main/ets/modes/triggers/LocationSubscription.ets` | 围栏订阅管理 + 进入/退出分发（链路 A） |
 | `entry/src/main/ets/modes/triggers/ModeGeolocationStore.ets` | 围栏坐标持久化（Preferences） |
 | `entry/src/main/ets/modes/ModeManager.ets` | 模式系统入口，管理 registry + orchestrator + subscription |
+| `entry/src/main/ets/pages/A2uiHome/Index.ets` | `registerBbpOfficeExitListener` 注册 BBP exit listener + 30s 节流防抖 |
 
 **预制坐标**（v2）：
 - 家：`34.152411, 108.850390`

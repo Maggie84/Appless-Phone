@@ -55,6 +55,10 @@ export class LocationSubscription {
     this.onEnter(kind);
   }
 
+  clearActiveKind(): void {
+    this.activeKind = null;
+  }
+
   clear(): void {
     this.fences.forEach((fence: GeoFence) => {
       this.api.unsubscribe(fence);

@@ -31,11 +31,24 @@ import { A2uiStreamMeta, callLocalModel, initSkillSystem, modelThinkCloseSeen, s
 import { CliRuntime } from '@loop/cli-runtime';
 import { ensureInit, getExecFn, getError } from '../../native/NativeCli.ets';
 import { ModeManager } from '../../modes/ModeManager';
-import { GeofenceApi } from '../../modes/triggers/GeofenceApi';
+import { GeofenceApi, GeofenceTransition } from '../../modes/triggers/GeofenceApi';
 import { ModeGeolocationStore } from '../../modes/triggers/ModeGeolocationStore';
+import { GeoFence } from '../../modes/core/ModeTypes';
 import { SmartHomeControlBehavior } from '../../modes/behaviors/SmartHomeControlBehavior';
 import { DoNotDisturbBehavior } from '../../modes/behaviors/DoNotDisturbBehavior';
 import { ModeKind } from '@loop/agent-core';
+import { BbpEventReporter } from '../../bbp/BbpEventReporter';
+import { createMobileMessage, isOfficeExitMessage } from '../../bbp/BbpMobileMessageFactory';
+import { BbpNetworkTransport } from '../../bbp/BbpNetworkTransport';
+import { BbpSettingsStore } from '../../bbp/BbpSettingsStore';
+import { BbpMockLocation } from '../../bbp/BbpTypes';
+import {
+  VEHICLE_GREETING_EVENT_ID,
+  requestVehicleGreetingNotificationPermission,
+  showVehicleGreetingNotification,
+  vehicleGreetingState
+} from '../../bbp/VehicleGreetingNotifier';
+import { emitter } from '@kit.BasicServicesKit';
 import { GMAIL_MCP_AUTH_SETUP_URL, GMAIL_WEB_URL, GOOGLE_CALENDAR_WEB_URL, GOOGLE_OAUTH_SETUP_URL } from '@loop/agent-core';
 import { A2uiSurfaceStore, createSeedA2uiSurface } from '@loop/agent-core';
 import {
@@ -493,6 +506,13 @@ struct Index {
   @State composioAuthItems: ComposioAuthConfigItem[] = [];
   @State composioAuthMessage: string = '';
   @State composioAuthBusy: boolean = false;
+  @State bbpEndpoint: string = '';
+  @State bbpEnabled: boolean = false;
+  @State bbpMockLocation: BbpMockLocation = 'office';
+  @State bbpAmbientTemperatureText: string = '30';
+  @State bbpTargetTemperatureText: string = '24';
+  @State bbpBusy: boolean = false;
+  @State bbpStatus: string = '未配置';
   @State mailDetailEventJson: string = '';
   @State mailReplyEventJson: string = '';
   @State mailCalendarEventJson: string = '';
@@ -511,7 +531,13 @@ struct Index {
   @State luckinInlinePatchTick: number = 0;
   private luckinOptionSwitchInFlight: boolean = false;
   private modeManager: ModeManager | null = null;
+  private geofenceApi: GeofenceApi | null = null;
   private modeGeolocationStore: ModeGeolocationStore | null = null;
+  private lastBbpOfficeExitReportMs: number = 0;
+  private lastBbpOfficeArrivalReportMs: number = 0;
+  private readonly BBP_OFFICE_REPORT_THROTTLE_MS: number = 30000;
+  private bbpSettingsStore: BbpSettingsStore | null = null;
+  private readonly bbpEventReporter: BbpEventReporter = new BbpEventReporter(new BbpNetworkTransport());
   private readonly MODE_GUIDE_NONE: number = 0;
   private readonly MODE_GUIDE_ASK_HOME: number = 1;
   private readonly MODE_GUIDE_ASK_WORK: number = 2;
@@ -607,14 +633,194 @@ struct Index {
     this.loadPersonaOverrides();
     this.loadPaymentAccounts();
     this.loadStripeReceivingProfile();
+    this.loadBbpSettings();
+    this.initModeSystem();
+    this.registerVehicleGreetingEvents();
+    void this.requestVehicleGreetingNotificationPermissionOnLaunch();
     void this.requestLocationPermissionOnLaunch();
     this.initCliRuntime();
-    this.initModeSystem();
+  }
+
+  aboutToDisappear(): void {
+    emitter.off(VEHICLE_GREETING_EVENT_ID);
+  }
+
+  private registerVehicleGreetingEvents(): void {
+    emitter.on({ eventId: VEHICLE_GREETING_EVENT_ID }, () => {
+      this.handleVehicleGreetingConfirmed();
+    });
+    if (vehicleGreetingState.pending) {
+      this.handleVehicleGreetingConfirmed();
+    }
+  }
+
+  private async requestVehicleGreetingNotificationPermissionOnLaunch(): Promise<void> {
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    const ok = await requestVehicleGreetingNotificationPermission(context);
+    aiLogInfo('[AIPhone][VehicleGreetingNotify] enabled=' + ok);
+  }
+
+  private handleVehicleGreetingConfirmed(): void {
+    if (!vehicleGreetingState.pending) {
+      return;
+    }
+    vehicleGreetingState.pending = false;
+    aiLogInfo('[AIPhone][VehicleGreetingConfirm] confirmed; notifying vehicle');
+    void this.sendBbpOfficeExitMessage('我离开公司了，需要用车，请提前打开迎宾模式', true);
+  }
+
+  private loadBbpSettings(): void {
+    const context = this.getUIContext().getHostContext() as common.Context;
+    this.bbpSettingsStore = new BbpSettingsStore(context);
+    const settings = this.bbpSettingsStore.loadSync();
+    this.bbpEndpoint = settings.endpoint;
+    this.bbpEnabled = settings.enabled;
+    this.bbpMockLocation = settings.mockLocation;
+    this.bbpAmbientTemperatureText = settings.ambientTemperatureText;
+    this.bbpTargetTemperatureText = settings.targetTemperatureText;
+    this.bbpStatus = settings.endpoint.length > 0 ? '已配置，等待测试事件' : '未配置';
+  }
+
+  private saveBbpSettings(
+    endpoint: string,
+    enabled: boolean,
+    mockLocation: BbpMockLocation,
+    ambientTemperatureText: string,
+    targetTemperatureText: string,
+  ): void {
+    this.bbpEndpoint = endpoint;
+    this.bbpEnabled = enabled;
+    this.bbpMockLocation = mockLocation;
+    this.bbpAmbientTemperatureText = ambientTemperatureText;
+    this.bbpTargetTemperatureText = targetTemperatureText;
+    if (this.bbpSettingsStore !== null) {
+      this.bbpSettingsStore.saveSync({
+        endpoint: endpoint,
+        enabled: enabled,
+        mockLocation: mockLocation,
+        ambientTemperatureText: ambientTemperatureText,
+        targetTemperatureText: targetTemperatureText,
+      });
+    }
+  }
+
+  private async sendSimulatedOfficeExit(): Promise<void> {
+    if (this.bbpBusy || !this.bbpEnabled || this.bbpMockLocation !== 'office') {
+      return;
+    }
+    await this.sendBbpOfficeExitMessage('我离开公司回家了', false);
+  }
+
+  private async sendBbpOfficeArrivalReset(): Promise<void> {
+    if (this.bbpBusy || !this.bbpEnabled || this.bbpEndpoint.trim().length === 0) {
+      return;
+    }
+    this.bbpBusy = true;
+    this.bbpStatus = '正在上报回到公司重置事件';
+    try {
+      const parsedTemperature = Number.parseFloat(this.bbpAmbientTemperatureText.trim());
+      const ambientTemperatureC = Number.isFinite(parsedTemperature) ? parsedTemperature : 25;
+      const event = createMobileMessage(
+        'appless-phone-' + util.generateRandomUUID(false), '我回到公司了', new Date().toISOString(),
+        'appless-phone-001', ambientTemperatureC);
+      const result = await this.bbpEventReporter.reportMobileMessage(this.bbpEndpoint, event);
+      this.bbpStatus = result.ok ? result.message : 'BBP 重置事件上报失败：' + result.message;
+    } finally {
+      this.bbpBusy = false;
+    }
+  }
+
+  private async sendBbpOfficeExitMessage(message: string, showInChat: boolean): Promise<boolean> {
+    this.bbpBusy = true;
+    this.bbpStatus = '正在上报离开公司回家事件';
+    if (showInChat) {
+      this.appendMessage('user', message);
+      this.inputText = inputTextAfterPromptSubmit(this.inputText);
+      this.isBusy = true;
+    }
+    try {
+      const ambientTemperatureC = Number.parseFloat(this.bbpAmbientTemperatureText.trim());
+      if (!Number.isFinite(ambientTemperatureC)) {
+        throw new Error('当前温度必须是有效数字');
+      }
+      const event = createMobileMessage(
+        'appless-phone-' + util.generateRandomUUID(false), message, new Date().toISOString(),
+        'appless-phone-001', ambientTemperatureC);
+      const result = await this.bbpEventReporter.reportMobileMessage(this.bbpEndpoint, event);
+      if (result.ok) {
+        if (!result.duplicate && result.status !== 'ignored') {
+          this.saveBbpSettings(
+            this.bbpEndpoint,
+            this.bbpEnabled,
+            'home',
+            this.bbpAmbientTemperatureText,
+            this.bbpTargetTemperatureText,
+          );
+        }
+        this.bbpStatus = result.message;
+        if (showInChat) {
+          this.appendMessage('assistant', result.message);
+        }
+        if (!result.duplicate && result.status === 'accepted') {
+          await this.pollBbpOfficeExitResult(event.eventId, showInChat);
+        }
+        return true;
+      } else {
+        this.bbpStatus = 'BBP 上报失败：' + result.message;
+        if (showInChat) {
+          this.appendMessage('assistant', this.bbpStatus);
+        }
+        return false;
+      }
+    } finally {
+      this.bbpBusy = false;
+      if (showInChat) {
+        this.isBusy = false;
+      }
+    }
+  }
+
+  private async pollBbpOfficeExitResult(eventId: string, showInChat: boolean): Promise<void> {
+    // Future-Act、System Agent 与车控是异步链路；最多轮询 30 秒取得最终回执。
+    for (let attempt = 0; attempt < 15; attempt++) {
+      await new Promise<void>((resolve: () => void) => {
+        setTimeout(() => resolve(), 2000);
+      });
+      const result = await this.bbpEventReporter.getMobileMessageStatus(this.bbpEndpoint, eventId);
+      if (!result.ok) {
+        this.bbpStatus = 'BBP 执行结果查询失败：' + result.message;
+        if (showInChat) {
+          this.appendMessage('assistant', this.bbpStatus);
+        }
+        return;
+      }
+      this.bbpStatus = result.message;
+      if (result.status === 'succeeded' || result.status === 'processed' || result.status === 'ignored' ||
+        result.status === 'cooldown' || result.status === 'failed') {
+        if (showInChat) {
+          this.appendMessage('assistant', result.message);
+        }
+        return;
+      }
+    }
+    this.bbpStatus = '温控策略仍在执行，请稍后在感知页面查看空调详情';
+    if (showInChat) {
+      this.appendMessage('assistant', this.bbpStatus);
+    }
+  }
+
+  private async tryBbpOfficeExitMessage(prompt: string): Promise<boolean> {
+    if (!this.bbpEnabled || this.bbpMockLocation !== 'office' || !isOfficeExitMessage(prompt)) {
+      return false;
+    }
+    await this.sendBbpOfficeExitMessage(prompt, true);
+    return true;
   }
 
   private initModeSystem(): void {
     const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
     const geofenceApi = new GeofenceApi();
+    this.geofenceApi = geofenceApi;
     this.modeGeolocationStore = new ModeGeolocationStore(ctx);
     this.modeManager = new ModeManager(
       (surface: A2uiSurfaceState) => this.forceApplySurface(surface, 'mode'),
@@ -1795,6 +2001,60 @@ struct Index {
     });
   }
 
+  private trySetBbpEndpointTrigger(prompt: string, visibleText: string): boolean {
+    const lower = prompt.toLowerCase();
+    const hasKeyword = lower.indexOf('设置车机地址') >= 0 || lower.indexOf('设置bbp地址') >= 0 ||
+      lower.indexOf('设置bbp') >= 0 || lower.indexOf('设置车机服务') >= 0;
+    if (!hasKeyword) {
+      return false;
+    }
+    this.appendMessage('user', visibleText);
+    this.inputText = inputTextAfterPromptSubmit(this.inputText);
+    const match = prompt.match(/https?:\/\/[^\s，,。；;]+/);
+    const endpoint = match !== null && match !== undefined ? match[0] : '';
+    if (endpoint.length === 0) {
+      this.appendMessage('assistant', '请在消息中带上车机服务地址，例如：设置车机地址 http://192.168.1.100:8070');
+      return true;
+    }
+    this.saveBbpSettings(endpoint, true, 'office', this.bbpAmbientTemperatureText, this.bbpTargetTemperatureText);
+    aiLogInfo('[AIPhone][BbpEndpointSet] endpoint=' + endpoint);
+    this.appendMessage('assistant', '已设置车机服务地址：' + endpoint + '，BBP 上报已开启。输入「发送车机」即可测试通路。');
+    return true;
+  }
+
+  private tryOfficeExitTestTrigger(prompt: string, visibleText: string): boolean {
+    const lower = prompt.toLowerCase();
+    if (lower.indexOf('测试离开公司') < 0 && lower.indexOf('模拟离开公司') < 0 && lower.indexOf('模拟离开') < 0) {
+      return false;
+    }
+    this.appendMessage('user', visibleText);
+    this.inputText = inputTextAfterPromptSubmit(this.inputText);
+    aiLogInfo('[AIPhone][OfficeExitTestTrigger] manual');
+    void this.reportDetectedOfficeExit();
+    this.appendMessage('assistant', '已模拟离开公司，请查看系统通知。点「需要用车」会把消息发给车机。');
+    return true;
+  }
+
+  private trySendVehicleMessageTrigger(prompt: string): boolean {
+    const lower = prompt.toLowerCase();
+    const isTrigger = lower.indexOf('发送车机') >= 0 || lower.indexOf('测试车机') >= 0 || lower.indexOf('通知车机') >= 0;
+    if (!isTrigger) {
+      return false;
+    }
+    let message = '我离开公司了，需要用车，请提前打开迎宾模式';
+    const keywordIdx = prompt.indexOf('发送车机');
+    if (keywordIdx >= 0) {
+      let rest = prompt.substring(keywordIdx + '发送车机'.length).trim();
+      rest = rest.replace(/^[：:，,\s]+/, '');
+      if (rest.length > 0) {
+        message = rest;
+      }
+    }
+    aiLogInfo('[AIPhone][VehicleGreetingSendTrigger] manual messageChars=' + message.length);
+    void this.sendBbpOfficeExitMessage(message, true);
+    return true;
+  }
+
   private async submitPrompt(prompt: string, visibleText: string, actionId: string = '', actionArgs: Object | null = null): Promise<void> {
     const trimmed = prompt.trim();
     if (trimmed.length === 0 || this.isBusy) {
@@ -1807,6 +2067,15 @@ struct Index {
       return;
     }
     if (await this.tryModeSetLocationTrigger(trimmed, visibleText)) {
+      return;
+    }
+    if (this.tryOfficeExitTestTrigger(trimmed, visibleText)) {
+      return;
+    }
+    if (await this.trySendVehicleMessageTrigger(trimmed)) {
+      return;
+    }
+    if (await this.tryBbpOfficeExitMessage(trimmed)) {
       return;
     }
     const lower = trimmed.toLowerCase();
@@ -2022,9 +2291,11 @@ struct Index {
       }
       aiLogInfo('[AIPhone][ModeGuideHome] lat=' + latitude + ' lng=' + longitude);
     } else {
+      const workFence: GeoFence = { latitude, longitude, radiusMeters: 200, label: '公司' };
       if (this.modeGeolocationStore !== null) {
-        this.modeGeolocationStore.saveFence(ModeKind.WORK, { latitude: latitude, longitude: longitude, radiusMeters: 200, label: '公司' });
+        this.modeGeolocationStore.saveFence(ModeKind.WORK, workFence);
       }
+      this.registerBbpOfficeExitListener(workFence);
       aiLogInfo('[AIPhone][ModeGuideWork] lat=' + latitude + ' lng=' + longitude);
     }
     return '';
@@ -2073,10 +2344,25 @@ struct Index {
         latitude = typed.latitude;
         longitude = typed.longitude;
       } else {
-        const current = await geoLocationManager.getLastLocation();
-        if (current.latitude !== undefined && current.longitude !== undefined) {
-          latitude = current.latitude;
-          longitude = current.longitude;
+        // getLastLocation() is only a cache. It is often empty immediately
+        // after install/permission grant, so request a live location before
+        // asking the user to type latitude and longitude manually.
+        await this.ensureLocationPermission();
+        try {
+          const last = await geoLocationManager.getLastLocation();
+          if (last.latitude !== undefined && last.longitude !== undefined) {
+            latitude = last.latitude;
+            longitude = last.longitude;
+          }
+        } catch (_error) {
+          // A missing cached location is normal; use a fresh reading below.
+        }
+        if (latitude === 0 && longitude === 0) {
+          const current = await geoLocationManager.getCurrentLocation();
+          if (current.latitude !== undefined && current.longitude !== undefined) {
+            latitude = current.latitude;
+            longitude = current.longitude;
+          }
         }
       }
     } catch (error) {
@@ -2084,7 +2370,7 @@ struct Index {
         (error instanceof Error ? error.message : JSON.stringify(error)));
     }
     if (latitude === 0 && longitude === 0) {
-      this.appendMessage('assistant', '获取位置失败，请在回复中带上经纬度（如 设为家 31.2304,121.4737）。');
+      this.appendMessage('assistant', '实时定位失败。请确认已开启系统定位服务并授权本应用定位；仍失败时可带经纬度（如 设为家 31.2304,121.4737）。');
       return true;
     }
     if (setHome) {
@@ -2096,13 +2382,79 @@ struct Index {
       this.appendMessage('assistant', '已把当前位置设为「家」。到家附近会自动触发回家模式。');
     } else {
       this.modeManager.subscribeWork(latitude, longitude, 200);
+      const workFence: GeoFence = { latitude, longitude, radiusMeters: 200, label: '公司' };
       if (this.modeGeolocationStore !== null) {
-        this.modeGeolocationStore.saveFence(ModeKind.WORK, { latitude: latitude, longitude: longitude, radiusMeters: 200, label: '公司' });
+        this.modeGeolocationStore.saveFence(ModeKind.WORK, workFence);
       }
+      this.registerBbpOfficeExitListener(workFence);
       aiLogInfo('[AIPhone][ModeSetWork] lat=' + latitude + ' lng=' + longitude);
-      this.appendMessage('assistant', '已把当前位置设为「公司」。到公司附近会自动触发公司模式。');
+      this.appendMessage('assistant', '已把当前位置设为「公司」。离开公司围栏后自动通知车机。');
     }
     return true;
+  }
+
+  private registerBbpOfficeExitListener(fence: GeoFence): void {
+    if (this.geofenceApi === null) {
+      return;
+    }
+    this.geofenceApi.setTransitionListener(fence, 'bbp-office-exit',
+      (label: string, transition: GeofenceTransition): void => {
+        aiLogInfo('[AIPhone][BbpOfficeGeofence] label=' + label + ' transition=' + transition);
+        const now = Date.now();
+        if (transition === 'exit') {
+          if (now - this.lastBbpOfficeExitReportMs < this.BBP_OFFICE_REPORT_THROTTLE_MS) {
+            aiLogInfo('[AIPhone][BbpOfficeGeofence] exit throttled');
+            return;
+          }
+          this.lastBbpOfficeExitReportMs = now;
+          void this.reportDetectedOfficeExit();
+        } else {
+          if (now - this.lastBbpOfficeArrivalReportMs < this.BBP_OFFICE_REPORT_THROTTLE_MS) {
+            aiLogInfo('[AIPhone][BbpOfficeGeofence] enter throttled');
+            return;
+          }
+          this.lastBbpOfficeArrivalReportMs = now;
+          void this.reportDetectedOfficeArrival();
+        }
+      });
+  }
+
+  private async reportDetectedOfficeExit(): Promise<void> {
+    aiLogInfo('[AIPhone][OfficeExit] detected; updating UI then asking user');
+    this.appendMessage('assistant', '检测到您已离开公司，已发送确认通知。请在通知栏选择是否需要用车、提前打开迎宾模式。');
+    this.exitModeSurface();
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    await showVehicleGreetingNotification(context);
+    aiLogInfo('[AIPhone][OfficeExit] notification sent');
+  }
+
+  private exitModeSurface(): void {
+    aiLogInfo('[AIPhone][ExitModeSurface] begin');
+    if (this.modeManager !== null) {
+      this.modeManager.exitActiveMode();
+    }
+    this.currentSurface = this.surfaceSnapshot(createSeedA2uiSurface());
+    this.surfaceRenderTick = this.surfaceRenderTick + 1;
+    this.htmlHomeCacheKey = '';
+    this.htmlHomeCacheHtml = '';
+    this.syncHtmlHomeStableHtml();
+    aiLogInfo('[AIPhone][ExitModeSurface] end intent=' + this.currentSurface.intent +
+      ' renderTick=' + this.surfaceRenderTick + ' stableChars=' + this.htmlHomeStableHtml.length);
+  }
+
+  private async reportDetectedOfficeArrival(): Promise<void> {
+    if (this.bbpBusy || !this.bbpEnabled || this.bbpEndpoint.trim().length === 0) {
+      return;
+    }
+    this.saveBbpSettings(
+      this.bbpEndpoint,
+      this.bbpEnabled,
+      'office',
+      this.bbpAmbientTemperatureText,
+      this.bbpTargetTemperatureText,
+    );
+    aiLogInfo('[AIPhone][BbpOfficeGeofence] transition=enter; resetting office-exit scene');
+    await this.sendBbpOfficeArrivalReset();
   }
 
   private currentVoiceSession(seq: number): boolean {
@@ -2792,7 +3144,7 @@ struct Index {
     for (let index = 0; index < result.permissions.length; index++) {
       const permission = result.permissions[index];
       const granted = result.authResults.length > index && result.authResults[index] === 0;
-      if (permission === APPROX_LOCATION_PERMISSION && granted) {
+      if ((permission === APPROX_LOCATION_PERMISSION || permission === PRECISE_LOCATION_PERMISSION) && granted) {
         return true;
       }
     }
@@ -2802,7 +3154,7 @@ struct Index {
   private async ensureLocationPermission(): Promise<void> {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     const permission = await abilityAccessCtrl.createAtManager()
-      .requestPermissionsFromUser(context, [APPROX_LOCATION_PERMISSION]);
+      .requestPermissionsFromUser(context, [APPROX_LOCATION_PERMISSION, PRECISE_LOCATION_PERMISSION]);
     if (!this.locationPermissionGranted({
       permissions: permission.permissions,
       authResults: permission.authResults
@@ -2815,6 +3167,7 @@ struct Index {
     try {
       await this.ensureLocationPermission();
       aiLogInfo('[AIPhone][LocationPermissionLaunch] ok=true');
+      await this.startModeGeofenceSubscriptions();
     } catch (error) {
       aiLogError('[AIPhone][LocationPermissionLaunch] ok=false reason=' +
         (error instanceof Error ? error.message : JSON.stringify(error)));
@@ -2822,17 +3175,21 @@ struct Index {
   }
 
   private async startModeGeofenceSubscriptions(): Promise<void> {
-    if (this.modeManager === null) {
+    if (this.modeManager === null || this.modeGeolocationStore === null) {
       return;
     }
     try {
-      const HOME_LAT = 34.152411;
-      const HOME_LNG = 108.850390;
-      const WORK_LAT = 34.196702;
-      const WORK_LNG = 108.834021;
-      this.modeManager.subscribeHome(HOME_LAT, HOME_LNG, 200);
-      this.modeManager.subscribeWork(WORK_LAT, WORK_LNG, 200);
-      aiLogInfo('[AIPhone][ModeGeofenceSubscribe] auto subscribed home and work');
+      const homeFence = this.modeGeolocationStore.loadFence(ModeKind.HOME);
+      const workFence = this.modeGeolocationStore.loadFence(ModeKind.WORK);
+      if (homeFence !== null) {
+        this.modeManager.subscribeHome(homeFence.latitude, homeFence.longitude, homeFence.radiusMeters);
+      }
+      if (workFence !== null) {
+        this.modeManager.subscribeWork(workFence.latitude, workFence.longitude, workFence.radiusMeters);
+        this.registerBbpOfficeExitListener(workFence);
+      }
+      aiLogInfo('[AIPhone][ModeGeofenceSubscribe] restored home=' +
+        (homeFence !== null) + ' work=' + (workFence !== null));
     } catch (error) {
       aiLogError('[AIPhone][ModeGeofenceSubscribe] ok=false reason=' +
         (error instanceof Error ? error.message : JSON.stringify(error)));
@@ -4181,6 +4538,11 @@ struct Index {
         htmlHomeDebugExportEnabled: $htmlHomeDebugExportEnabled,
         htmlHomeDebugExportPath: this.htmlHomeDebugExportPath,
         didiMcpSandboxEnabled: $didiMcpSandboxEnabled,
+        bbpEndpoint: $bbpEndpoint,
+        bbpEnabled: $bbpEnabled,
+        bbpMockLocation: $bbpMockLocation,
+        bbpAmbientTemperatureText: $bbpAmbientTemperatureText,
+        bbpTargetTemperatureText: $bbpTargetTemperatureText,
         showAdvancedSettings: $showAdvancedSettings,
         connectionStatus: this.connectionStatus,
         connectionMessage: this.connectionMessage,
@@ -4198,6 +4560,8 @@ struct Index {
         composioAuthItems: this.composioAuthItems,
         composioAuthMessage: this.composioAuthMessage,
         composioAuthBusy: this.composioAuthBusy,
+        bbpStatus: this.bbpStatus,
+        bbpBusy: this.bbpBusy,
         onBack: () => {
           this.showConfigPage = false;
         },
@@ -4226,6 +4590,21 @@ struct Index {
         },
         onToggleDidiMcpSandbox: (isOn: boolean) => {
           this.configureDidiMcpSandboxRuntime(isOn);
+        },
+        onBbpSettingsChange: (
+          endpoint: string,
+          enabled: boolean,
+          mockLocation: BbpMockLocation,
+          ambientTemperatureText: string,
+          targetTemperatureText: string,
+        ) => {
+          this.saveBbpSettings(endpoint, enabled, mockLocation, ambientTemperatureText, targetTemperatureText);
+        },
+        onSendBbpOfficeExit: () => {
+          this.sendSimulatedOfficeExit();
+        },
+        onSendBbpOfficeArrival: () => {
+          this.sendBbpOfficeArrivalReset();
         }
       })
     } else {

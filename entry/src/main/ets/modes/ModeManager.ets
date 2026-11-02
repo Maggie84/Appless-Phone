@@ -61,6 +61,11 @@ export class ModeManager implements ModeApi {
     return this.orchestrator.trigger(kind);
   }
 
+  exitActiveMode(): void {
+    this.orchestrator.exit();
+    this.subscription.clearActiveKind();
+  }
+
   reTrigger(kind: ModeKind): Promise<string> {
     return this.orchestrator.trigger(kind, true);
   }

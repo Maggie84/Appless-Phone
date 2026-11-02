@@ -17,6 +17,12 @@ import {
   xOAuthConfigFromProvider
 } from '@loop/agent-core';
 import { configurePersonaStoreFromRaw } from '../model/PersonaStore';
+import {
+  VEHICLE_GREETING_CONFIRM_VALUE,
+  VEHICLE_GREETING_DISMISS_VALUE,
+  VEHICLE_GREETING_WANT_PARAM,
+  emitVehicleGreetingConfirmed
+} from '../bbp/VehicleGreetingNotifier';
 
 const DOMAIN = 0x0000;
 const LOCAL_PROVIDER_CONFIG_RAWFILE = 'aiphone_provider_config.json';
@@ -207,6 +213,7 @@ export default class EntryAbility extends UIAbility {
     this.loadComposioConfig();
     this.loadPersonaPacks();
     this.handleOAuthWant(want);
+    this.handleVehicleGreetingWant(want);
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 
@@ -289,6 +296,26 @@ export default class EntryAbility extends UIAbility {
     }
     this.loadPersonaPacks();
     this.handleOAuthWant(want);
+    this.handleVehicleGreetingWant(want);
+  }
+
+  private handleVehicleGreetingWant(want: Want): void {
+    const params = want.parameters;
+    if (params === undefined || params === null) {
+      return;
+    }
+    const value = params[VEHICLE_GREETING_WANT_PARAM];
+    if (typeof value !== 'string') {
+      return;
+    }
+    if (value === VEHICLE_GREETING_CONFIRM_VALUE) {
+      aiLogInfo('[AIPhone][VehicleGreetingWant] confirmed');
+      emitVehicleGreetingConfirmed();
+      return;
+    }
+    if (value === VEHICLE_GREETING_DISMISS_VALUE) {
+      aiLogInfo('[AIPhone][VehicleGreetingWant] dismissed');
+    }
   }
 
   private handleOAuthWant(want: Want): void {

@@ -81,12 +81,6 @@
           "when": "inuse"
         }
       },
-      {
-        "name": "ohos.permission.MANAGE_SETTINGS"
-      },
-      {
-        "name": "ohos.permission.MANAGE_SECURE_SETTINGS"
-      }
     ],
     "pages": "$profile:main_pages",
     "abilities": [

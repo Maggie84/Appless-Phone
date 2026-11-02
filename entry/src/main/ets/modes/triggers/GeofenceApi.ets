@@ -6,23 +6,42 @@ import { LocationApi, LocationEnterCallback } from './LocationSubscription';
 const DOMAIN = 0xFF;
 const LOG_TAG = 'GeofenceApi';
 
+/**
+ * The HarmonyOS geofence service reports an explicit enter or exit state.  We
+ * keep this small abstraction independent of the mode system so other product
+ * features (for example the BBP commute flow) can listen to the same fence.
+ */
+export type GeofenceTransition = 'enter' | 'exit';
+export type GeofenceTransitionCallback = (fenceLabel: string, transition: GeofenceTransition) => void;
+
 export class GeofenceApi implements LocationApi {
-  private readonly callbacks: Map<string, LocationEnterCallback> = new Map();
+  private readonly callbacks: Map<string, Map<string, GeofenceTransitionCallback>> = new Map();
 
   subscribe(fence: GeoFence, onEnter: LocationEnterCallback): string {
     const key = this.fenceKey(fence.label);
-    this.callbacks.set(key, onEnter);
+    this.setTransitionListener(fence, 'mode-enter', (label: string, transition: GeofenceTransition): void => {
+      if (transition === 'enter') {
+        onEnter(label);
+      }
+    });
     try {
       const option: geofence.SubscribeGeofenceOption = this.option(fence);
       const ret = geofence.subscribe(option, (response: geofence.GeofenceResponse) => {
-        hilog.info(DOMAIN, LOG_TAG, 'geofence event type=%{public}d status=%{public}d',
-          `${response.type}`, `${response.status}`);
-        if (response.status === 0 ||
-          response.status === 2) {
-          const cb = this.callbacks.get(key);
-          if (cb !== undefined) {
-            cb(fence.label);
-          }
+        hilog.info(DOMAIN, LOG_TAG, 'geofence event label=%{public}s raw=%{public}s',
+          fence.label, JSON.stringify(response));
+        // Status values follow @ohos.geofence.d.ts: ENTER=0, EXIT=1, ENTER_EXIT=2.
+        // Read them as raw numbers because the native module does not export
+        // the GeofenceStatus enum at runtime.
+        const status = Number(response.status);
+        if (status === 0) {
+          this.notify(key, fence.label, 'enter');
+        } else if (status === 1) {
+          this.notify(key, fence.label, 'exit');
+        } else if (status === 2) {
+          // The platform has not provided a direction for this combined state.
+          // Keep the legacy mode behaviour (treat it as an arrival), but never
+          // use it to start a potentially costly vehicle action.
+          this.notify(key, fence.label, 'enter');
         }
       });
       hilog.info(DOMAIN, LOG_TAG, 'subscribe %{public}s ret=%{public}d', fence.label, `${ret}`);
@@ -32,6 +51,20 @@ export class GeofenceApi implements LocationApi {
       hilog.error(DOMAIN, LOG_TAG, 'subscribe %{public}s failed: %{public}s', fence.label, msg);
       return 'geofence.subscribe error: ' + msg;
     }
+  }
+
+  /**
+   * Adds or replaces a named listener without issuing a second native
+   * subscription.  Call this after subscribe() for the corresponding fence.
+   */
+  setTransitionListener(fence: GeoFence, listenerId: string, callback: GeofenceTransitionCallback): void {
+    const key = this.fenceKey(fence.label);
+    let listeners = this.callbacks.get(key);
+    if (listeners === undefined) {
+      listeners = new Map();
+      this.callbacks.set(key, listeners);
+    }
+    listeners.set(listenerId, callback);
   }
 
   unsubscribe(fence: GeoFence): void {
@@ -75,5 +108,15 @@ export class GeofenceApi implements LocationApi {
 
   private fenceKey(label: string): string {
     return label;
+  }
+
+  private notify(key: string, label: string, transition: GeofenceTransition): void {
+    const listeners = this.callbacks.get(key);
+    if (listeners === undefined) {
+      return;
+    }
+    listeners.forEach((callback: GeofenceTransitionCallback): void => {
+      callback(label, transition);
+    });
   }
 }

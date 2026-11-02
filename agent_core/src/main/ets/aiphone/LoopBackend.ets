@@ -230,6 +230,7 @@ export class LoopBackend {
       } catch (callbackError) {
         const message = callbackError instanceof Error ? callbackError.message : `${callbackError}`;
         error = `Callback failed: ${message}`;
+        
         raw += `ERROR: ${error}\n`;
         return;
       }

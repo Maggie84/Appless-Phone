@@ -69,6 +69,9 @@ import personaMemoryUpdateTest from './PersonaMemoryUpdate.test';
 import personaMarkdownTest from './PersonaMarkdown.test';
 import skillMarkdownParserTest from './SkillMarkdownParser.test';
 import modelScopeDirectClientTest from './ModelScopeDirectClient.test';
+import bbpEventFactoryTest from './BbpEventFactory.test';
+import bbpEventReporterTest from './BbpEventReporter.test';
+import bbpMobileMessageFactoryTest from './BbpMobileMessageFactory.test';
 
 export default function testsuite() {
   localUnitTest();
@@ -142,4 +145,7 @@ export default function testsuite() {
   htmlHomeSnapshotTest();
   htmlHomeRendererTest();
   htmlHomeActionPolicyTest();
+  bbpEventFactoryTest();
+  bbpEventReporterTest();
+  bbpMobileMessageFactoryTest();
 }

@@ -26,6 +26,7 @@ import { connectionStatusLabel } from '../state/A2uiHomeState';
 import { DebugTextPanel } from './DebugTextPanel';
 import { personaAvatarResource } from './PersonaAvatar';
 import { composioToolkitLogoResource } from './ComposioLogoResource';
+import { BbpMockLocation } from '../../../bbp/BbpTypes';
 
 interface ComposioToolkitSummary {
   slug: string;
@@ -70,6 +71,11 @@ export struct ConfigPage {
   @Link htmlHomeDebugExportEnabled: boolean;
   @Prop htmlHomeDebugExportPath: string = '';
   @Link didiMcpSandboxEnabled: boolean;
+  @Link bbpEndpoint: string;
+  @Link bbpEnabled: boolean;
+  @Link bbpMockLocation: BbpMockLocation;
+  @Link bbpAmbientTemperatureText: string;
+  @Link bbpTargetTemperatureText: string;
   @Link showAdvancedSettings: boolean;
   @Prop connectionStatus: string = 'idle';
   @Prop connectionMessage: string = '';
@@ -87,6 +93,8 @@ export struct ConfigPage {
   @Prop composioAuthItems: ComposioAuthConfigItem[] = [];
   @Prop composioAuthMessage: string = '';
   @Prop composioAuthBusy: boolean = false;
+  @Prop bbpStatus: string = '未配置';
+  @Prop bbpBusy: boolean = false;
   @State editingPersonaDoc: string = '';
   @State showComposioAuthPanel: boolean = false;
   onBack: () => void = () => {};
@@ -98,6 +106,16 @@ export struct ConfigPage {
   onResetPersona: () => void = () => {};
   onExportHtmlHomeDocument: () => void = () => {};
   onToggleDidiMcpSandbox: (isOn: boolean) => void = (_isOn: boolean) => {};
+  onBbpSettingsChange: (
+    endpoint: string,
+    enabled: boolean,
+    mockLocation: BbpMockLocation,
+    ambientTemperatureText: string,
+    targetTemperatureText: string,
+  ) => void = (_endpoint: string, _enabled: boolean, _mockLocation: BbpMockLocation,
+    _ambientTemperatureText: string, _targetTemperatureText: string) => {};
+  onSendBbpOfficeExit: () => void = () => {};
+  onSendBbpOfficeArrival: () => void = () => {};
 
   @Builder
   InputLabel(label: string, top: number) {
@@ -105,6 +123,22 @@ export struct ConfigPage {
       .fontSize(12)
       .fontColor(COLOR_MUTED)
       .margin({ top: top, bottom: 6 })
+  }
+
+  private saveBbpSettings(): void {
+    this.onBbpSettingsChange(
+      this.bbpEndpoint,
+      this.bbpEnabled,
+      this.bbpMockLocation,
+      this.bbpAmbientTemperatureText,
+      this.bbpTargetTemperatureText,
+    );
+  }
+
+  private bbpMockReady(): boolean {
+    return this.bbpMockLocation === 'office'
+      && this.bbpEndpoint.trim().length > 0
+      && Number.isFinite(Number.parseFloat(this.bbpAmbientTemperatureText.trim()));
   }
 
   @Builder
@@ -878,6 +912,146 @@ export struct ConfigPage {
               .onChange((value: string) => {
                 this.customParametersJson = value;
               })
+
+            Divider()
+              .color(COLOR_LINE)
+              .margin({ top: 16, bottom: 12 })
+
+            Text('BBP 主动服务 Demo')
+              .fontSize(13)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(COLOR_INK)
+              .width('100%')
+
+            Text('手机上报离开公司消息，BBP 使用车机感知温度判断是否提前开启空调')
+              .fontSize(12)
+              .fontColor(COLOR_MUTED)
+              .lineHeight(18)
+              .width('100%')
+              .margin({ top: 4 })
+
+            this.InputLabel('BBP Demo 地址', 12)
+            TextInput({ text: this.bbpEndpoint, placeholder: 'http://192.168.1.8:8070' })
+              .height(42)
+              .fontSize(13)
+              .fontColor(COLOR_TEXT)
+              .placeholderColor(COLOR_MUTED)
+              .backgroundColor(COLOR_FIELD)
+              .borderRadius(9)
+              .border({ width: 1, color: COLOR_CARD_EDGE })
+              .padding({ left: 10, right: 10 })
+              .onChange((value: string) => {
+                this.bbpEndpoint = value;
+                this.saveBbpSettings();
+              })
+
+            Row() {
+              Column() {
+                Text('启用 BBP 事件上报')
+                  .fontSize(13)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(COLOR_INK)
+                Text('关闭时不会发送任何位置事件')
+                  .fontSize(12)
+                  .fontColor(COLOR_MUTED)
+                  .margin({ top: 4 })
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+
+              Toggle({ type: ToggleType.Switch, isOn: this.bbpEnabled })
+                .selectedColor(COLOR_ACCENT)
+                .onChange((isOn: boolean) => {
+                  this.bbpEnabled = isOn;
+                  this.saveBbpSettings();
+                })
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+            .margin({ top: 12 })
+
+            this.InputLabel('当前位置', 12)
+            Row({ space: 8 }) {
+              Button(this.bbpMockLocation === 'office' ? '当前在公司' : '设为公司')
+                .layoutWeight(1)
+                .height(36)
+                .fontSize(12)
+                .fontColor(COLOR_BUTTON_TEXT)
+                .backgroundColor(this.bbpMockLocation === 'office' ? COLOR_ACCENT_DEEP : COLOR_MUTED)
+                .borderRadius(8)
+                .onClick(() => {
+                  const shouldReset = this.bbpMockLocation === 'home';
+                  this.bbpMockLocation = 'office';
+                  this.saveBbpSettings();
+                  if (shouldReset) {
+                    this.onSendBbpOfficeArrival();
+                  }
+                })
+              Button(this.bbpMockLocation === 'home' ? '当前在家' : '设为家')
+                .layoutWeight(1)
+                .height(36)
+                .fontSize(12)
+                .fontColor(COLOR_BUTTON_TEXT)
+                .backgroundColor(this.bbpMockLocation === 'home' ? COLOR_ACCENT_DEEP : COLOR_MUTED)
+                .borderRadius(8)
+                .onClick(() => {
+                  this.bbpMockLocation = 'home';
+                  this.saveBbpSettings();
+                })
+            }
+            .width('100%')
+
+            this.InputLabel('当前车内温度（℃）', 12)
+            TextInput({ text: this.bbpAmbientTemperatureText, placeholder: '例如 30' })
+              .height(42)
+              .fontSize(13)
+              .fontColor(COLOR_TEXT)
+              .placeholderColor(COLOR_MUTED)
+              .backgroundColor(COLOR_FIELD)
+              .borderRadius(9)
+              .border({ width: 1, color: COLOR_CARD_EDGE })
+              .padding({ left: 10, right: 10 })
+              .onChange((value: string) => {
+                this.bbpAmbientTemperatureText = value;
+                this.saveBbpSettings();
+              })
+
+            Text('该温度会随聊天框中的“离开公司”消息发送给 BBP：≥ 28℃ 自动预冷至 22℃，≤ 10℃ 自动预热至 26℃。')
+              .fontSize(11)
+              .fontColor(COLOR_MUTED)
+              .lineHeight(16)
+              .width('100%')
+              .margin({ top: 6, bottom: 4 })
+
+            Text(this.bbpMockLocation === 'office'
+              ? '离开公司后：车内温度 ≥ 28℃ 制冷，≤ 10℃ 制热，其余温度只记录消息。'
+              : '当前在家。请先设为公司，才能模拟离开公司回家。')
+              .fontSize(11)
+              .fontColor(COLOR_MUTED)
+              .lineHeight(16)
+              .width('100%')
+              .margin({ top: 8 })
+
+            Button(this.bbpBusy ? '上报中' : '模拟离开公司回家并上报')
+              .enabled(this.bbpEnabled && !this.bbpBusy && this.bbpMockReady())
+              .height(40)
+              .width('100%')
+              .fontSize(13)
+              .fontColor(COLOR_BUTTON_TEXT)
+              .backgroundColor(COLOR_ACCENT_DEEP)
+              .borderRadius(9)
+              .margin({ top: 12 })
+              .onClick(() => {
+                this.onSendBbpOfficeExit();
+              })
+
+            Text(this.bbpStatus)
+              .fontSize(11)
+              .fontColor(this.bbpStatus.indexOf('失败') >= 0 ? COLOR_ERROR : COLOR_MUTED)
+              .lineHeight(16)
+              .copyOption(CopyOptions.InApp)
+              .width('100%')
+              .margin({ top: 8 })
 
             Divider()
               .color(COLOR_LINE)
